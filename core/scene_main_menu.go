@@ -2,12 +2,20 @@ package core
 
 import (
 	"image/color"
+	"runtime"
 
 	"github.com/ebitenui/ebitenui"
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
+
+// canExit reports whether quitting the game makes sense on this
+// platform. In a browser the tab cannot be closed by the game, the
+// canvas would only freeze, so the Exit action is hidden there.
+func canExit() bool {
+	return runtime.GOOS != "js"
+}
 
 type MainMenuScene struct {
 	ui *ebitenui.UI
@@ -48,9 +56,11 @@ func newMainMenuScene(graph *Graph) *MainMenuScene {
 			return nil
 		}
 	}))
-	menu.AddChild(newMenuButton("Exit", func() {
-		s.action = s.exit
-	}))
+	if canExit() {
+		menu.AddChild(newMenuButton("Exit", func() {
+			s.action = s.exit
+		}))
+	}
 
 	s.ui = &ebitenui.UI{Container: newCenteredRoot(menu)}
 	return s
@@ -69,7 +79,7 @@ func (s *MainMenuScene) Update(g *Game) error {
 	s.words.handleClick()
 	s.words.update(float64(g.screenWidth), float64(g.screenHeight))
 	// Esc acts like the Exit button.
-	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+	if canExit() && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		s.action = s.exit
 	}
 	if s.action != nil {

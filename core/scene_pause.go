@@ -1,6 +1,8 @@
 package core
 
 import (
+	"image"
+
 	"github.com/ebitenui/ebitenui"
 	eimage "github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
@@ -16,8 +18,11 @@ type PauseScene struct {
 	ui *ebitenui.UI
 	// under is the scene covered by this dialog, used to capture its frame.
 	under Scene
-	// frame is the blurred snapshot of the scene below.
+	// frame is the blurred snapshot of the scene below, kept downscaled
+	// by blurScale and stretched back on draw.
 	frame *ebiten.Image
+	// frameFor is the screen size the snapshot was captured for.
+	frameFor image.Point
 	// action is set by button handlers and executed on the next Update.
 	action func(g *Game) error
 	// onYes is called when the user confirms the dialog.
@@ -103,9 +108,22 @@ func (s *PauseScene) Update(g *Game) error {
 	return nil
 }
 
+// blurScale shrinks the captured frame before the CPU blur. Reading
+// pixels back from the GPU and blurring them at full size freezes a
+// frame (especially in wasm); a small frame costs blurScale^2 times
+// less, and stretching it back adds extra smoothing for free.
+const blurScale = 4
+
 func (s *PauseScene) Draw(screen *ebiten.Image) {
 	s.ensureFrame(screen)
-	screen.DrawImage(s.frame, nil)
+	b, fb := screen.Bounds(), s.frame.Bounds()
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(
+		float64(b.Dx())/float64(fb.Dx()),
+		float64(b.Dy())/float64(fb.Dy()),
+	)
+	op.Filter = ebiten.FilterLinear
+	screen.DrawImage(s.frame, op)
 	s.ui.Draw(screen)
 }
 
@@ -113,16 +131,27 @@ func (s *PauseScene) Draw(screen *ebiten.Image) {
 // The capture is redone when the screen size changes (e.g. window resize).
 func (s *PauseScene) ensureFrame(screen *ebiten.Image) {
 	b := screen.Bounds()
-	if s.frame != nil && s.frame.Bounds() == b {
+	if s.frame != nil && s.frameFor == b.Size() {
 		return
 	}
 	if s.frame != nil {
 		s.frame.Deallocate()
 	}
+	s.frameFor = b.Size()
+
+	// Render the scene below at full size, then let the GPU shrink it.
 	raw := ebiten.NewImage(b.Dx(), b.Dy())
 	s.under.Draw(raw)
-	s.frame = blurred(raw)
+	sw, sh := max(b.Dx()/blurScale, 1), max(b.Dy()/blurScale, 1)
+	small := ebiten.NewImage(sw, sh)
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Scale(float64(sw)/float64(b.Dx()), float64(sh)/float64(b.Dy()))
+	op.Filter = ebiten.FilterLinear
+	small.DrawImage(raw, op)
 	raw.Deallocate()
+
+	s.frame = blurred(small)
+	small.Deallocate()
 	// Dim the blurred frame once so the dialog stands out.
-	vector.FillRect(s.frame, 0, 0, float32(b.Dx()), float32(b.Dy()), uiOverlayColor, false)
+	vector.FillRect(s.frame, 0, 0, float32(sw), float32(sh), uiOverlayColor, false)
 }

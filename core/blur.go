@@ -4,8 +4,10 @@ import "github.com/hajimehoshi/ebiten/v2"
 
 // Blur settings: a box-blur repeated several times looks close to a
 // gaussian blur. Bigger radius or more passes give a stronger effect.
+// The radius is small because the input frame is downscaled by
+// blurScale: the visible radius is multiplied by that factor.
 const (
-	blurRadius = 8
+	blurRadius = 2
 	blurPasses = 3
 )
 
