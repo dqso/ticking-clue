@@ -6,7 +6,7 @@ LDFLAGS     = -ldflags "-X main.version=$(VERSION) -X main.debug=$(DEBUG)"
 BIN_DIR    := bin
 WASM_DIR   := client/wasm
 
-.PHONY: help run build wasm serve clean
+.PHONY: help run build wasm serve clean proto convert-graph
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
@@ -31,6 +31,12 @@ wasm: ## Build wasm into client/wasm
 serve: DEBUG = true
 serve: wasm ## Build wasm with debug and serve client/wasm on :8080
 	go run github.com/eliben/static-server@latest -port 8080 $(WASM_DIR)
+
+proto: ## Generate Go code from proto files
+	protoc --proto_path=./proto --go_out=proto/gen graph.proto
+
+convert-graph: ## Convert neo4j json exports into binary protobuf graphs
+	go run ./tools/graphconverter
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR) $(WASM_DIR)/$(APP).wasm $(WASM_DIR)/wasm_exec.js

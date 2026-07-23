@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package graph;
+
+option go_package = ".";
+
+// Graph is a compact binary form of the lemma graph
+// exported from neo4j (see tools/graphconverter).
+message Graph {
+  repeated Node nodes = 1;
+  repeated Edge edges = 2;
+}
+
+// Node is a lemma vertex.
+message Node {
+  int64 id = 1;
+  string word = 2;
+}
+
+// EdgeType mirrors the "type" property of LINK relationships in neo4j.
+enum EdgeType {
+  EDGE_TYPE_UNSPECIFIED = 0;
+  HAS_READING = 1;
+  HAS_SENSE = 2;
+  SYNONYM = 3;
+  ANTONYM = 4;
+  HYPERNYM = 5;
+  HYPONYM = 6;
+  HOLONYM = 7;
+  MERONYM = 8;
+  COORDINATE_TERM = 9;
+  DERIVED = 10;
+  RELATED = 11;
+}
+
+// Edge is a directed link between two nodes.
+message Edge {
+  int64 id = 1;
+  EdgeType type = 2;
+  int64 from = 3;
+  int64 to = 4;
+}
