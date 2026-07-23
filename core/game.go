@@ -7,6 +7,8 @@ type Game struct {
 	screenHeight int
 	scenes       SceneManager
 	debug        debugOverlay
+	// graph is the lemma graph, loaded by LoadingScene.
+	graph *Graph
 }
 
 func NewGame(debug bool, version string, screenWidth, screenHeight int) *Game {

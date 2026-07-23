@@ -4,3 +4,6 @@ import _ "embed"
 
 //go:embed fonts/FiraSans-Regular.ttf
 var FiraSansTTF []byte
+
+//go:embed graph.pb
+var GraphPB []byte

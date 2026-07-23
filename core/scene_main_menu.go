@@ -11,13 +11,15 @@ import (
 
 type MainMenuScene struct {
 	ui *ebitenui.UI
+	// words are decorative flying words on the background.
+	words *flyingWords
 	// action is set by button handlers and executed on the next Update,
 	// because handlers have no access to *Game.
 	action func(g *Game) error
 }
 
-func newMainMenuScene() *MainMenuScene {
-	s := &MainMenuScene{}
+func newMainMenuScene(graph *Graph) *MainMenuScene {
+	s := &MainMenuScene{words: newFlyingWords(graph, 1)}
 
 	menu := widget.NewContainer(
 		widget.ContainerOpts.Layout(widget.NewRowLayout(
@@ -41,7 +43,8 @@ func newMainMenuScene() *MainMenuScene {
 	}))
 	menu.AddChild(newMenuButton("Options", func() {
 		s.action = func(g *Game) error {
-			g.Push(newOptionsScene())
+			// The words keep flying on the options background.
+			g.Push(newOptionsScene(s.words))
 			return nil
 		}
 	}))
@@ -63,6 +66,8 @@ func (s *MainMenuScene) exit(g *Game) error {
 
 func (s *MainMenuScene) Update(g *Game) error {
 	s.ui.Update()
+	s.words.handleClick()
+	s.words.update(float64(g.screenWidth), float64(g.screenHeight))
 	// Esc acts like the Exit button.
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		s.action = s.exit
@@ -77,5 +82,6 @@ func (s *MainMenuScene) Update(g *Game) error {
 
 func (s *MainMenuScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.NRGBA{R: 0x18, G: 0x18, B: 0x24, A: 0xff})
+	s.words.draw(screen)
 	s.ui.Draw(screen)
 }

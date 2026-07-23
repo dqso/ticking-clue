@@ -11,12 +11,14 @@ import (
 
 type OptionsScene struct {
 	ui *ebitenui.UI
+	// words is the group shared with the main menu, it keeps flying here.
+	words *flyingWords
 	// back is set by the Back button and handled on the next Update.
 	back bool
 }
 
-func newOptionsScene() *OptionsScene {
-	s := &OptionsScene{}
+func newOptionsScene(words *flyingWords) *OptionsScene {
+	s := &OptionsScene{words: words}
 
 	content := widget.NewContainer(
 		widget.ContainerOpts.Layout(widget.NewRowLayout(
@@ -42,6 +44,8 @@ func newOptionsScene() *OptionsScene {
 
 func (s *OptionsScene) Update(g *Game) error {
 	s.ui.Update()
+	s.words.handleClick()
+	s.words.update(float64(g.screenWidth), float64(g.screenHeight))
 	// Esc acts like the Back button.
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		s.back = true
@@ -55,5 +59,6 @@ func (s *OptionsScene) Update(g *Game) error {
 
 func (s *OptionsScene) Draw(screen *ebiten.Image) {
 	screen.Fill(color.NRGBA{R: 0x18, G: 0x18, B: 0x24, A: 0xff})
+	s.words.draw(screen)
 	s.ui.Draw(screen)
 }
