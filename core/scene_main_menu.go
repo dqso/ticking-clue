@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"image/color"
 	"runtime"
 
@@ -45,14 +46,25 @@ func newMainMenuScene(graph *Graph) *MainMenuScene {
 
 	menu.AddChild(newMenuButton("New game", func() {
 		s.action = func(g *Game) error {
-			g.Push(newGameScene())
+			// The round starts from a random word with enough links
+			// to give the player several directions to explore.
+			start := g.graph.RandomLinked(minStartLinks)
+			if start == nil {
+				return fmt.Errorf("graph has no word with more than %d links", minStartLinks)
+			}
+			g.Push(newGameScene(start))
 			return nil
 		}
 	}))
 	menu.AddChild(newMenuButton("Options", func() {
 		s.action = func(g *Game) error {
-			// The words keep flying on the options background.
 			g.Push(newOptionsScene(s.words))
+			return nil
+		}
+	}))
+	menu.AddChild(newMenuButton("What is it?", func() {
+		s.action = func(g *Game) error {
+			g.Push(newCreditsScene(s.words))
 			return nil
 		}
 	}))

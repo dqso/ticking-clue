@@ -51,35 +51,72 @@ type Graph struct {
 }
 
 // LoadGraph parses the embedded protobuf and builds the in-memory graph.
-func LoadGraph() (*Graph, error) {
+// progress, when not nil, receives the loading progress from 0 to 1.
+// Intermediate values are dropped when the reader is busy; the final 1
+// is always delivered, so the send blocks until it is consumed.
+func LoadGraph(progress chan<- float64) (*Graph, error) {
+	report := func(p float64) {
+		if progress == nil {
+			return
+		}
+		if p >= 1 {
+			// The final 100% always reaches the reader.
+			progress <- p
+			return
+		}
+		select {
+		case progress <- p:
+		default:
+			// The previous value is not consumed yet, skip this one.
+		}
+		// Let the wasm build render a frame between work chunks.
+		yieldToBrowser()
+	}
+	report(0)
 	var src pb.Graph
 	if err := proto.Unmarshal(assets.GraphPB, &src); err != nil {
 		return nil, fmt.Errorf("unmarshal graph.pb: %w", err)
 	}
-	return buildGraph(&src), nil
+	// Unmarshal is roughly half of the whole work.
+	report(0.5)
+	return buildGraph(&src, report), nil
 }
 
-func buildGraph(src *pb.Graph) *Graph {
+// reportEvery limits how often the build loops report their progress.
+const reportEvery = 4096
+
+func buildGraph(src *pb.Graph, report func(float64)) *Graph {
 	g := &Graph{
 		byID:   make(map[int64]*Node, len(src.GetNodes())),
 		byWord: make(map[string]*Node, len(src.GetNodes())),
 	}
-	for _, n := range src.GetNodes() {
+	nodes := src.GetNodes()
+	for i, n := range nodes {
 		node := &Node{ID: n.GetId(), Word: n.GetWord()}
 		g.byID[node.ID] = node
 		// On duplicate words the first node wins.
 		if _, ok := g.byWord[node.Word]; !ok && node.Word != "" {
 			g.byWord[node.Word] = node
 		}
+		if i%reportEvery == 0 {
+			// Nodes take the 0.5..0.7 part of the progress.
+			report(0.5 + 0.2*float64(i)/float64(len(nodes)))
+		}
 	}
-	for _, e := range src.GetEdges() {
+	edges := src.GetEdges()
+	for i, e := range edges {
 		from, to := g.byID[e.GetFrom()], g.byID[e.GetTo()]
 		if from == nil || to == nil {
 			// Skip edges pointing to missing nodes.
 			continue
 		}
 		from.Links = append(from.Links, Link{Type: e.GetType(), To: to})
+		if i%reportEvery == 0 {
+			// Edges take the 0.7..1.0 part of the progress.
+			report(0.7 + 0.3*float64(i)/float64(len(edges)))
+		}
 	}
+	report(1)
 	return g
 }
 
@@ -96,6 +133,26 @@ func (g *Graph) ByWord(word string) *Node {
 // Len returns the number of nodes.
 func (g *Graph) Len() int {
 	return len(g.byID)
+}
+
+// RandomLinked returns a uniformly random node with a non-empty word
+// and more than min links, or nil when there is no such node.
+// Uses reservoir sampling over a linear scan, so call it rarely.
+func (g *Graph) RandomLinked(min int) *Node {
+	var res *Node
+	seen := 0
+	for _, n := range g.byWord {
+		if len(n.Links) <= min {
+			continue
+		}
+		// Each matching node replaces the result with probability 1/seen,
+		// which keeps the choice uniform without collecting a slice.
+		seen++
+		if rand.IntN(seen) == 0 {
+			res = n
+		}
+	}
+	return res
 }
 
 // Random returns a random node with a non-empty word,

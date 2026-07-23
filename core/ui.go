@@ -16,6 +16,8 @@ var (
 	uiTextColor          = color.NRGBA{R: 0xf0, G: 0xf0, B: 0xf0, A: 0xff}
 	uiPanelColor         = color.NRGBA{R: 0x20, G: 0x20, B: 0x2e, A: 0xff}
 	uiOverlayColor       = color.NRGBA{A: 0xa0}
+	uiLinkColor          = color.NRGBA{R: 0x7a, G: 0xb8, B: 0xff, A: 0xff}
+	uiLinkHoverColor     = color.NRGBA{R: 0xa8, G: 0xd2, B: 0xff, A: 0xff}
 )
 
 // facePtr wraps a text face into a pointer to the interface,

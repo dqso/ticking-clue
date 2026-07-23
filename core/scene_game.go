@@ -7,11 +7,18 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
+// minStartLinks is the minimum number of links the starting word
+// must have, so the round always has enough directions to explore.
+const minStartLinks = 5
+
 // GameScene is the gameplay scene. For now it is only a placeholder
 // background with an Esc handler.
-type GameScene struct{}
+type GameScene struct {
+	// start is the word the round is built around.
+	start *Node
+}
 
-func newGameScene() *GameScene { return &GameScene{} }
+func newGameScene(start *Node) *GameScene { return &GameScene{start: start} }
 
 func (s *GameScene) Update(g *Game) error {
 	// Esc opens a modal dialog asking to leave to the main menu.
