@@ -13,7 +13,34 @@ env:
 
 jobs:
   binaries:
-    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          # Linux needs cgo and X11/GL dev libraries.
+          - target: linux-amd64
+            runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            cgo: '1'
+          # Windows is the only target that builds without cgo.
+          - target: windows-amd64
+            runner: ubuntu-latest
+            goos: windows
+            goarch: amd64
+            cgo: '0'
+            ext: .exe
+          # macOS backend is cgo (Objective-C), so it needs a macos runner.
+          - target: darwin-amd64
+            runner: macos-latest
+            goos: darwin
+            goarch: amd64
+            cgo: '1'
+          - target: darwin-arm64
+            runner: macos-latest
+            goos: darwin
+            goarch: arm64
+            cgo: '1'
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,58 +51,27 @@ jobs:
           go-version: '1.26'
 
       - name: Install Linux build deps (ebiten)
+        if: matrix.goos == 'linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y libc6-dev libgl1-mesa-dev libglu1-mesa-dev \
             libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev \
             libxxf86vm-dev libasound2-dev pkg-config
 
-      - name: Set version
-        run: echo "VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
-
-      - name: Build Linux (amd64)
-        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-linux-amd64 $ENTRYPOINT
-
-      - name: Build Windows (amd64)
+      - name: Build
         env:
-          GOOS: windows
-          GOARCH: amd64
-          CGO_ENABLED: '0'
-        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-windows-amd64.exe $ENTRYPOINT
-
-      - name: Build macOS (amd64)
-        env:
-          GOOS: darwin
-          GOARCH: amd64
-          CGO_ENABLED: '0'
-        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-darwin-amd64 $ENTRYPOINT
-
-      - name: Build macOS (arm64)
-        env:
-          GOOS: darwin
-          GOARCH: arm64
-          CGO_ENABLED: '0'
-        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-darwin-arm64 $ENTRYPOINT
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: ${{ matrix.cgo }}
+        run: |
+          VERSION=$(git describe --tags --always --dirty)
+          go build -ldflags "-X main.version=$VERSION" \
+            -o dist/$APP-${{ matrix.target }}${{ matrix.ext }} $ENTRYPOINT
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ticking-clue-linux-amd64
-          path: dist/ticking-clue-linux-amd64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ticking-clue-windows-amd64
-          path: dist/ticking-clue-windows-amd64.exe
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ticking-clue-darwin-amd64
-          path: dist/ticking-clue-darwin-amd64
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ticking-clue-darwin-arm64
-          path: dist/ticking-clue-darwin-arm64
+          name: ${{ env.APP }}-${{ matrix.target }}
+          path: dist/*
 
   pages:
     runs-on: ubuntu-latest
