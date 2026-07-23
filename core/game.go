@@ -30,8 +30,7 @@ func (g *Game) Pop() {
 
 func (g *Game) Update() error {
 	g.debug.update()
-	active := g.scenes.Active()
-	return active.Update(g)
+	return g.scenes.Active().Update(g)
 }
 
 func (g *Game) Draw(screen *ebiten.Image) {
