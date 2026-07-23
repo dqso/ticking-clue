@@ -1,0 +1,3 @@
+/bin/
+/client/wasm/wasm_exec.js
+/client/wasm/ticking-clue.wasm

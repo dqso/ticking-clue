@@ -1,0 +1,117 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [master]
+
+permissions:
+  contents: write
+
+env:
+  APP: ticking-clue
+  ENTRYPOINT: ./client/desktop
+
+jobs:
+  binaries:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Install Linux build deps (ebiten)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libc6-dev libgl1-mesa-dev libglu1-mesa-dev \
+            libxcursor-dev libxi-dev libxinerama-dev libxrandr-dev \
+            libxxf86vm-dev libasound2-dev pkg-config
+
+      - name: Set version
+        run: echo "VERSION=$(git describe --tags --always --dirty)" >> "$GITHUB_ENV"
+
+      - name: Build Linux (amd64)
+        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-linux-amd64 $ENTRYPOINT
+
+      - name: Build Windows (amd64)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-windows-amd64.exe $ENTRYPOINT
+
+      - name: Build macOS (amd64)
+        env:
+          GOOS: darwin
+          GOARCH: amd64
+          CGO_ENABLED: '0'
+        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-darwin-amd64 $ENTRYPOINT
+
+      - name: Build macOS (arm64)
+        env:
+          GOOS: darwin
+          GOARCH: arm64
+          CGO_ENABLED: '0'
+        run: go build -ldflags "-X main.version=$VERSION" -o dist/$APP-darwin-arm64 $ENTRYPOINT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticking-clue-linux-amd64
+          path: dist/ticking-clue-linux-amd64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticking-clue-windows-amd64
+          path: dist/ticking-clue-windows-amd64.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticking-clue-darwin-amd64
+          path: dist/ticking-clue-darwin-amd64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticking-clue-darwin-arm64
+          path: dist/ticking-clue-darwin-arm64
+
+  pages:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Build WASM
+        env:
+          GOOS: js
+          GOARCH: wasm
+        run: go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o client/wasm/$APP.wasm $ENTRYPOINT
+
+      - name: Copy wasm_exec.js
+        run: |
+          GOROOT=$(go env GOROOT)
+          if [ -f "$GOROOT/lib/wasm/wasm_exec.js" ]; then
+            cp "$GOROOT/lib/wasm/wasm_exec.js" client/wasm/wasm_exec.js
+          else
+            cp "$GOROOT/misc/wasm/wasm_exec.js" client/wasm/wasm_exec.js
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ticking-clue-wasm
+          path: |
+            client/wasm/ticking-clue.wasm
+            client/wasm/index.html
+            client/wasm/wasm_exec.js
+
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./client/wasm
