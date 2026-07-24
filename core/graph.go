@@ -44,6 +44,17 @@ func (n *Node) Neighbors(types ...pb.EdgeType) []*Node {
 	return res
 }
 
+// LinkType returns the edge type of the first link from n to the given node,
+// or EDGE_TYPE_UNSPECIFIED when they are not directly linked.
+func (n *Node) LinkType(to *Node) pb.EdgeType {
+	for _, l := range n.Links {
+		if l.To == to {
+			return l.Type
+		}
+	}
+	return pb.EdgeType_EDGE_TYPE_UNSPECIFIED
+}
+
 // Graph is the lemma graph loaded from assets/graph.pb.
 type Graph struct {
 	byID   map[int64]*Node
