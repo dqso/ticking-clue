@@ -1,8 +1,6 @@
 package core
 
 import (
-	"log"
-
 	"github.com/ebitenui/ebitenui"
 	"github.com/ebitenui/ebitenui/input"
 	"github.com/ebitenui/ebitenui/widget"
@@ -87,7 +85,7 @@ func (s *GameScene) hideSurrender() {
 }
 
 func newGameScene(graph *Graph, start *Node, levels [levelCount]bool) *GameScene {
-	log.Printf("hidden word: %s", start.Word)
+	//log.Printf("hidden word: %s", start.Word)
 	s := &GameScene{round: newRound(graph, start, levels), dragCloud: -1, zoom: 1}
 	// The colors legend sticker is on the sheet from the start, so the player can
 	// learn what the arrow colors mean even before buying the hint that actually
