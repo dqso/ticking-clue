@@ -19,7 +19,7 @@ const (
 	// roundDurationA/B/C are the times the player starts the round with,
 	// chosen by the CEFR group of the highest enabled level (see
 	// roundDurationFor).
-	roundDurationA = 16 * time.Minute
+	roundDurationA = 15 * time.Minute
 	roundDurationB = 19 * time.Minute
 	roundDurationC = 22 * time.Minute
 	// wrongGuessPenalty is lost for an unknown or too far word.
