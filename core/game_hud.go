@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"image/color"
+	"strconv"
 	"time"
 
 	"github.com/hajimehoshi/ebiten/v2"
@@ -20,12 +22,52 @@ func drawTimer(screen *ebiten.Image, r *round, l gameLayout) {
 	if r.remaining <= timerLowThreshold {
 		clr = timerLowColor
 	}
-	w, _ := text.Measure(txt, face, 0)
+	w, h := text.Measure(txt, face, 0)
 	op := &text.DrawOptions{}
 	op.GeoM.Translate(l.w-16-w, 14)
 	op.ColorScale.ScaleWithColor(clr)
 	op.Filter = ebiten.FilterLinear
 	text.Draw(screen, txt, face, op)
+
+	// Speed debuff badge right under the timer while a speed hint sped time up:
+	// a fast-forward glyph plus the current stacking multiplier, in red, so it
+	// reads as "time runs faster", not "more time".
+	if r.timeScale > 1 {
+		drawSpeedDebuff(screen, r.timeScale, l.w-16, 14+h+4)
+	}
+}
+
+// drawSpeedDebuff draws the fast-forward icon and "×N" multiplier right-aligned
+// with its right edge at (rightX) and its top at (topY).
+func drawSpeedDebuff(screen *ebiten.Image, scale float64, rightX, topY float64) {
+	const iconW, iconH, gap = 15.0, 14.0, 5.0
+	face := newFace(18)
+	txt := "×" + formatScale(scale)
+	tw, _ := text.Measure(txt, face, 0)
+	startX := rightX - tw - gap - iconW
+	drawFastForward(screen, startX, topY, iconW, iconH, penaltyColor)
+	drawTextLeft(screen, txt, face, startX+iconW+gap, topY-1, penaltyColor)
+}
+
+// drawFastForward draws two right-pointing filled triangles (a fast-forward /
+// "faster" glyph) inside the box [x, y, w, h].
+func drawFastForward(dst *ebiten.Image, x, y, w, h float64, clr color.Color) {
+	half := w / 2
+	for i := 0; i < 2; i++ {
+		ox := x + float64(i)*half
+		p := &vector.Path{}
+		p.MoveTo(fx(ox), fx(y))
+		p.LineTo(fx(ox+half), fx(y+h/2))
+		p.LineTo(fx(ox), fx(y+h))
+		p.Close()
+		fillPath(dst, p, clr)
+	}
+}
+
+// formatScale renders a time-speed multiplier without trailing zeros, e.g.
+// 1.5 -> "1.5", 2.25 -> "2.25".
+func formatScale(v float64) string {
+	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
 // formatMMSS renders a non-negative duration as MM:SS.

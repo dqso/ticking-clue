@@ -30,6 +30,12 @@ const (
 	feedbackFlashTime = 1200 * time.Millisecond
 )
 
+// hintTimeScaleStep is how much each "speed" hint (word length, arrow colors)
+// multiplies the timer drain rate. Instead of costing a fixed chunk of time,
+// those hints make time run faster, and the debuff stacks: two of them give
+// 1.5 * 1.5 = 2.25x.
+const hintTimeScaleStep = 1.5
+
 // roundState is the lifecycle of a single round.
 type roundState int
 
@@ -110,6 +116,12 @@ type round struct {
 	remaining time.Duration
 	state     roundState
 
+	// timeScale multiplies how fast the timer drains. It starts at 1; each
+	// "speed" hint (word length, arrow colors) multiplies it by
+	// hintTimeScaleStep, so those hints make time run faster instead of costing
+	// a fixed chunk. The debuff stacks (see hintTimeScaleStep).
+	timeScale float64
+
 	// lengthShown reports that the word-length hint was bought.
 	lengthShown bool
 	// colorsShown reports that the arrow-color hint was bought.
@@ -144,6 +156,7 @@ func newRound(graph *Graph, hidden *Node, levels [levelCount]bool) *round {
 		rayAngle:        make(map[int64]float64),
 		revealedLetters: make(map[rune]bool),
 		hiddenTokens:    significantTokens(hidden.Word),
+		timeScale:       1,
 	}
 	r.links = directNeighbors(hidden)
 	return r
@@ -214,7 +227,8 @@ func (r *round) update() {
 	if r.flash > 0 {
 		r.flash -= tickDuration()
 	}
-	r.remaining -= tickDuration()
+	// Drain faster while a speed hint is active; timeScale is 1 by default.
+	r.remaining -= time.Duration(float64(tickDuration()) * r.timeScale)
 	if r.remaining <= 0 {
 		r.remaining = 0
 		r.state = roundLost

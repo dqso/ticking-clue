@@ -14,11 +14,11 @@ import (
 
 // Hint time costs, paid from the remaining time when a hint is bought. The
 // letter hint has no fixed cost: it is priced dynamically, see letterHintCost.
+// The word-length and arrow-colors hints have no time cost at all: they speed
+// up the timer instead (see hintTimeScaleStep).
 const (
-	hintLengthCost = 30 * time.Second
-	hintLinkCost   = 15 * time.Second
-	hintColorsCost = 20 * time.Second
-	hintPosCost    = 10 * time.Second
+	hintLinkCost = 15 * time.Second
+	hintPosCost  = 10 * time.Second
 )
 
 // Hint cell sizes: the outer button and the baked icon+cost graphic inside it.
@@ -56,26 +56,33 @@ var (
 	hintCellPressed = color.NRGBA{R: 0xd6, G: 0xd2, B: 0xe2, A: 0xff}
 )
 
-// useLengthHint reveals the length of the hidden word for a time cost and
-// returns the hint's name and cost for the Notes log (empty name = no-op).
-func (r *round) useLengthHint() (string, time.Duration) {
-	if r.state != roundPlaying || r.lengthShown {
-		return "", 0
-	}
-	r.lengthShown = true
-	r.applyDelta(-hintLengthCost)
-	return "word length", hintLengthCost
+// addTimeScale makes the timer drain faster by one step. Bought "speed" hints
+// call this instead of paying a fixed time cost; the effect stacks.
+func (r *round) addTimeScale() {
+	r.timeScale *= hintTimeScaleStep
 }
 
-// useColorsHint colors every arrow by its relation type for a time cost and
-// returns the hint's name and cost for the Notes log.
-func (r *round) useColorsHint() (string, time.Duration) {
+// useLengthHint reveals the length of the hidden word. It costs no fixed time:
+// it speeds up the timer instead (see addTimeScale). Returns the hint's name
+// for the Notes log, or "" when it is a no-op.
+func (r *round) useLengthHint() string {
+	if r.state != roundPlaying || r.lengthShown {
+		return ""
+	}
+	r.lengthShown = true
+	r.addTimeScale()
+	return "word length"
+}
+
+// useColorsHint colors every arrow by its relation type. Like the length hint
+// it costs no fixed time and speeds up the timer instead (see addTimeScale).
+func (r *round) useColorsHint() string {
 	if r.state != roundPlaying || r.colorsShown {
-		return "", 0
+		return ""
 	}
 	r.colorsShown = true
-	r.applyDelta(-hintColorsCost)
-	return "arrow colors", hintColorsCost
+	r.addTimeScale()
+	return "arrow colors"
 }
 
 // usePosHint reveals which parts of speech the hidden word can be for a time
@@ -218,8 +225,8 @@ func (r *round) useLinkHint() *Node {
 // cost was paid.
 func (s *GameScene) hintUseLength() {
 	t := s.round.remaining
-	name, cost := s.round.useLengthHint()
-	s.logHint(t, name, cost)
+	name := s.round.useLengthHint()
+	s.logSpeedHint(t, name)
 }
 
 func (s *GameScene) hintUseLetter() {
@@ -230,8 +237,8 @@ func (s *GameScene) hintUseLetter() {
 
 func (s *GameScene) hintUseColors() {
 	t := s.round.remaining
-	name, cost := s.round.useColorsHint()
-	s.logHint(t, name, cost)
+	name := s.round.useColorsHint()
+	s.logSpeedHint(t, name)
 }
 
 // hintUsePos buys the parts-of-speech hint and logs the parts it revealed with
@@ -289,10 +296,12 @@ func (s *GameScene) hintColumn() *widget.Container {
 	)
 	letterCost := s.round.letterHintCost()
 	letterGraphic := makeHintCellGraphic(hintLetterKind, letterCost)
-	length := newHintCell(makeHintCellGraphic(hintLengthKind, hintLengthCost), s.hintUseLength)
+	// The length and colors hints show a speed multiplier, not a time cost, so
+	// the cost argument is ignored for them (see drawHintCellGraphic).
+	length := newHintCell(makeHintCellGraphic(hintLengthKind, 0), s.hintUseLength)
 	letter := newHintCell(letterGraphic, s.hintUseLetter)
 	link := newHintCell(makeHintCellGraphic(hintLinkKind, hintLinkCost), s.hintUseLinkHint)
-	colors := newHintCell(makeHintCellGraphic(hintColorsKind, hintColorsCost), s.hintUseColors)
+	colors := newHintCell(makeHintCellGraphic(hintColorsKind, 0), s.hintUseColors)
 	pos := newHintCell(makeHintCellGraphic(hintPosKind, hintPosCost), s.hintUsePos)
 	s.hints = hintUI{
 		column:        column,
@@ -386,7 +395,13 @@ func drawHintCellGraphic(img *ebiten.Image, kind hintKind, cost time.Duration) {
 	case hintPosKind:
 		drawPosIcon(img)
 	}
-	drawTextCentered(img, "-"+formatMMSS(cost), newFace(16),
+	// Speed hints (length, colors) do not cost seconds: they speed up the timer,
+	// so their price reads as a stacking multiplier (e.g. "×1.5") instead.
+	label := "-" + formatMMSS(cost)
+	if kind == hintLengthKind || kind == hintColorsKind {
+		label = "×" + formatScale(hintTimeScaleStep)
+	}
+	drawTextCentered(img, label, newFace(16),
 		float64(hintCellInner)/2, float64(hintCellInner)-13, hintCostColor)
 }
 

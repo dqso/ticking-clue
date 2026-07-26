@@ -91,6 +91,15 @@ func (s *GameScene) logHint(t time.Duration, name string, cost time.Duration) {
 	s.logNote(t, fmt.Sprintf("I used the %q hint. %s", name, signedSeconds(-cost)))
 }
 
+// logSpeedHint records a "speed" hint (word length, arrow colors): it costs no
+// time but makes the clock run faster, so the note states the new multiplier.
+func (s *GameScene) logSpeedHint(t time.Duration, name string) {
+	if name == "" {
+		return
+	}
+	s.logNote(t, fmt.Sprintf("I used the %q hint. Time now runs faster (×%s).", name, formatScale(s.round.timeScale)))
+}
+
 // logGuess records a submitted guess in first person, with the time change.
 func (s *GameScene) logGuess(t time.Duration, out guessOutcome, delta time.Duration) {
 	switch out.kind {
