@@ -49,16 +49,18 @@ func ellipseEdge(hx, hy, ux, uy float64) float64 {
 }
 
 // centralMasked reports that the central cloud shows the hidden word as boxes
-// (one per letter): the letter-count hint is bought but the round is not won.
+// (one per letter): the letter-count hint is bought and the round is still on.
+// Once the round ends (win or loss) the real word is shown instead.
 func centralMasked(r *round) bool {
-	return r.state != roundWon && r.lengthShown
+	return r.state == roundPlaying && r.lengthShown
 }
 
 // centralLines are the display lines of the central plain-text cloud: the real
-// word once won, or a single question mark while the letter count is unknown.
-// The masked (boxes) state is handled separately, see drawMaskedWord.
+// word once the round is over (won or lost, so a loss reveals the answer), or a
+// single question mark while it is still on. The masked (boxes) state is handled
+// separately, see drawMaskedWord.
 func centralLines(r *round) []string {
-	if r.state == roundWon {
+	if r.state != roundPlaying {
 		return wrapWord(r.hidden.Word)
 	}
 	return []string{"?"}

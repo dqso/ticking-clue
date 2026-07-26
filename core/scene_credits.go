@@ -24,6 +24,9 @@ type CreditsScene struct {
 	content *widget.Container
 	scroll  *widget.ScrollContainer
 	slider  *widget.Slider
+	// texts are every text line, kept so their wrap width can follow the
+	// window size (see reflow).
+	texts []*widget.Text
 }
 
 // creditsLinks maps a [link=id] from the credits markup to its URL.
@@ -46,12 +49,13 @@ func newCreditsScene(words *flyingWords) *CreditsScene {
 		)),
 	)
 
-	// centered adds a text line centered inside the column. The text may
-	// contain [link=id]...[/link] BBCode; clicking it opens creditsLinks[id].
-	centered := func(txt string, size float64) {
-		content.AddChild(widget.NewText(
+	// line adds a left-aligned text line. The text may contain
+	// [link=id]...[/link] BBCode; clicking it opens creditsLinks[id]. Long
+	// lines wrap on their own: reflow keeps MaxWidth in sync with the window.
+	line := func(txt string, size float64) {
+		t := widget.NewText(
 			widget.TextOpts.Text(txt, facePtr(size), uiTextColor),
-			widget.TextOpts.Position(widget.TextPositionCenter, widget.TextPositionStart),
+			widget.TextOpts.Position(widget.TextPositionStart, widget.TextPositionStart),
 			widget.TextOpts.ProcessBBCode(true),
 			widget.TextOpts.LinkClickedHandler(func(a *widget.LinkEventArgs) {
 				if url, ok := creditsLinks[a.Id]; ok {
@@ -59,38 +63,43 @@ func newCreditsScene(words *flyingWords) *CreditsScene {
 				}
 			}),
 			widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.RowLayoutData{
-				Position: widget.RowLayoutPositionCenter,
+				Position: widget.RowLayoutPositionStart,
 			})),
-		))
+		)
+		s.texts = append(s.texts, t)
+		content.AddChild(t)
 	}
 
 	// Short pitch answering the "What is it?" panel title, then the controls.
-	centered("A word is hidden. Around it grows a graph of related words -\n"+
-		"synonyms, antonyms and more.\n"+
-		"Type your guesses: a close word reveals more of the graph and\n"+
-		"buys you time, a wrong one costs it. Name the hidden word before\n"+
-		"the clock counts down. Buy hints to close in - but beware, some\n"+
-		"of them only make time run faster.", 18)
+	// The pitch flows as one paragraph and is wrapped by reflow; the other
+	// blocks keep their hand-made breaks for structure and wrap only if narrow.
+	line("A word is hidden. Around it grows a graph of related words - "+
+		"synonyms, antonyms and more. The time left on the clock is your "+
+		"resource: it drains as you play, good guesses top it up and hints "+
+		"spend it. Type your guesses: a close word reveals more of the graph "+
+		"and buys you time, a wrong one costs it. Name the hidden word before "+
+		"the clock counts down. Buy hints to close in - but beware, some of "+
+		"them only make time run faster.", 18)
 
-	centered("Controls", 24)
-	centered("Type a word and press Enter to guess, Backspace to erase.\n"+
+	line("Controls", 26)
+	line("Type a word and press Enter to guess, Backspace to erase.\n"+
 		"Drag the sheet to pan, drag a word to move it, use [+]/[-] to zoom.\n"+
-		"Click a hint cell to buy it. Press Esc to pause.", 16)
+		"Click a hint cell to buy it. Press Esc to pause.", 18)
 
-	centered("Originally created by Denis Proleev ([link=dqso]github.com/dqso[/link])\n"+
-		"for GMTK Game Jam 2026, theme: count down", 16)
+	line("Originally created by Denis Proleev ([link=dqso]github.com/dqso[/link]) "+
+		"for GMTK Game Jam 2026, theme: count down", 18)
 
-	centered("Game engine", 24)
-	centered("Ebitengine [link=ebitengine]github.com/hajimehoshi/ebiten[/link],\n"+
-		"licensed under the Apache License 2.0", 16)
+	line("Game engine", 26)
+	line("Ebitengine [link=ebitengine]github.com/hajimehoshi/ebiten[/link], "+
+		"licensed under the Apache License 2.0", 18)
 
-	centered("Fonts", 24)
-	centered("Fira Sans — © The Mozilla Foundation and Telefonica S.A.,\n"+
-		"licensed under the SIL Open Font License 1.1", 16)
+	line("Fonts", 26)
+	line("Fira Sans - © The Mozilla Foundation and Telefonica S.A., "+
+		"licensed under the SIL Open Font License 1.1", 18)
 
-	centered("Content", 24)
-	centered("Word data is based on Wiktionary [link=wiktionary]en.wiktionary.org[/link],\n"+
-		"dual-licensed under CC BY-SA 4.0 and GFDL", 16)
+	line("Content", 26)
+	line("Word data is based on Wiktionary [link=wiktionary]en.wiktionary.org[/link], "+
+		"dual-licensed under CC BY-SA 4.0 and GFDL", 18)
 
 	// The content is scrollable: it may not fit on small screens.
 	scroll := widget.NewScrollContainer(
@@ -207,6 +216,27 @@ func newCreditsScene(words *flyingWords) *CreditsScene {
 	return s
 }
 
+// reflow keeps every line's wrap width matched to the window, so the text
+// re-wraps on resize. The width is derived from the screen, not from the
+// content: measuring the content would loop, because the panel sizes itself to
+// the widest line, so an unwrapped line would grow the panel and never wrap.
+// A cap keeps the lines readable on wide screens.
+func (s *CreditsScene) reflow(screenW int) {
+	// chrome is the fixed horizontal space around the text (root, panel and
+	// content paddings plus the scrollbar column).
+	const chrome, maxW = 220, 820
+	w := float64(screenW) - chrome
+	if w > maxW {
+		w = maxW
+	}
+	if w <= 0 {
+		return
+	}
+	for _, t := range s.texts {
+		t.MaxWidth = w
+	}
+}
+
 // updateScrolling hides the slider and resets the scroll position when
 // the whole content fits into the view, so there is nothing to scroll.
 func (s *CreditsScene) updateScrolling() {
@@ -221,6 +251,7 @@ func (s *CreditsScene) updateScrolling() {
 }
 
 func (s *CreditsScene) Update(g *Game) error {
+	s.reflow(g.screenWidth)
 	s.updateScrolling()
 	s.ui.Update()
 	s.words.handleClick()

@@ -16,10 +16,14 @@ import (
 // Gameplay tuning. These are kept together and are easy to adjust; several
 // of them are placeholders until the balance is decided.
 const (
-	// roundDuration is the time the player starts the round with.
-	roundDuration = 25 * time.Minute
+	// roundDurationA/B/C are the times the player starts the round with,
+	// chosen by the CEFR group of the highest enabled level (see
+	// roundDurationFor).
+	roundDurationA = 16 * time.Minute
+	roundDurationB = 19 * time.Minute
+	roundDurationC = 22 * time.Minute
 	// wrongGuessPenalty is lost for an unknown or too far word.
-	wrongGuessPenalty = 5 * time.Second
+	wrongGuessPenalty = 15 * time.Second
 	// guessRewardBase is the reward for a word one link away; words farther
 	// away are worth proportionally less (see guessReward). Placeholder.
 	guessRewardBase = 25 * time.Second
@@ -96,13 +100,16 @@ type round struct {
 	graph  *Graph
 	hidden *Node
 
-	// levels are the CEFR levels the player enabled. Link hints prefer neighbors
-	// of these levels and only fall back to others once they run out.
+	// levels are the CEFR levels the player enabled. The link hint mostly
+	// reveals neighbors of these levels (see linkPreferredChance).
 	levels [levelCount]bool
 
 	// links are the direct neighbors of the hidden word (deduplicated, with
 	// a non-empty word). They are the pool for the "reveal a link" hint.
 	links []*Node
+	// nextLink is the neighbor the link hint will reveal next. It is pre-rolled
+	// (see pickLink) so the hint cell can show that word's level in advance.
+	nextLink *Node
 	// revealed holds every shown word in reveal order, so ring positions
 	// stay stable as more words appear.
 	revealed []revealedNode
@@ -113,8 +120,14 @@ type round struct {
 	// word reached through that neighbor grows along the same ray.
 	rayAngle map[int64]float64
 
+	// remaining is the time left in the round. It is the player's resource:
+	// it drains every tick, guesses add to it and speed hints spend it faster,
+	// and the round is lost once it hits zero.
 	remaining time.Duration
 	state     roundState
+	// surrendered marks a loss caused by the Surrender button rather than the
+	// clock, so the end screen can tell the two apart.
+	surrendered bool
 
 	// timeScale multiplies how fast the timer drains. It starts at 1; each
 	// "speed" hint (word length, arrow colors) multiplies it by
@@ -151,7 +164,7 @@ func newRound(graph *Graph, hidden *Node, levels [levelCount]bool) *round {
 		graph:           graph,
 		hidden:          hidden,
 		levels:          levels,
-		remaining:       roundDuration,
+		remaining:       roundDurationFor(levels),
 		revealedSet:     make(map[int64]int),
 		rayAngle:        make(map[int64]float64),
 		revealedLetters: make(map[rune]bool),
@@ -160,6 +173,27 @@ func newRound(graph *Graph, hidden *Node, levels [levelCount]bool) *round {
 	}
 	r.links = directNeighbors(hidden)
 	return r
+}
+
+// roundDurationFor returns the starting time picked by the CEFR group of the
+// highest enabled level: A (A1, A2), B (B1, B2) or C (C1, C2). With no level
+// enabled it falls back to group A.
+func roundDurationFor(levels [levelCount]bool) time.Duration {
+	max := -1
+	for lvl := levelCount - 1; lvl >= 0; lvl-- {
+		if levels[lvl] {
+			max = lvl
+			break
+		}
+	}
+	switch {
+	case max >= int(LevelC1):
+		return roundDurationC
+	case max >= int(LevelB1):
+		return roundDurationB
+	default:
+		return roundDurationA
+	}
 }
 
 // directNeighbors returns the distinct neighbors of n that have a word,
@@ -233,6 +267,17 @@ func (r *round) update() {
 		r.remaining = 0
 		r.state = roundLost
 	}
+}
+
+// surrender ends the round as a loss right away (the Surrender button). The
+// clock is zeroed so the HUD and the end screen agree the round is over.
+func (r *round) surrender() {
+	if r.state != roundPlaying {
+		return
+	}
+	r.remaining = 0
+	r.surrendered = true
+	r.state = roundLost
 }
 
 // typeRune appends a typed letter to the current guess.

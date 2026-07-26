@@ -112,6 +112,21 @@ func (s *GameScene) logGuess(t time.Duration, out guessOutcome, delta time.Durat
 	}
 }
 
+// logLoss records the defeat in the journal once: the reason (the clock ran out
+// or the player gave up) and the answer, which is revealed anyway when the round
+// ends. The timecode is 0, matching the spent clock.
+func (s *GameScene) logLoss() {
+	if s.lossLogged {
+		return
+	}
+	s.lossLogged = true
+	reason := "Time's up."
+	if s.round.surrendered {
+		reason = "I gave up."
+	}
+	s.logNote(s.round.remaining, fmt.Sprintf("%s The word was %q.", reason, s.round.hidden.Word))
+}
+
 // logStartNote opens the journal at the full starting time with the free words
 // the game gives away. The words are masked like the clouds, so the journal
 // never leaks a token of the hidden word.

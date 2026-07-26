@@ -133,14 +133,14 @@ func feedbackText(r *round) string {
 	}
 }
 
-// drawEndOverlay dims the screen and shows the round result.
-func drawEndOverlay(screen *ebiten.Image, r *round, l gameLayout) {
-	vector.FillRect(screen, 0, 0, fx(l.w), fx(l.h), overlayColor, false)
-	title := "Time's up!"
-	if r.state == roundWon {
-		title = "You win!"
+// drawTimeUp shows the loss message in big letters near the bottom of the
+// screen. Unlike a modal overlay it does not dim the field: after a loss the
+// graph stays visible and interactive, like after a win (the answer is revealed
+// in the central cloud). The wording depends on how the round was lost.
+func drawTimeUp(screen *ebiten.Image, r *round, l gameLayout) {
+	msg := "Time's up!"
+	if r.surrendered {
+		msg = "You gave up!"
 	}
-	drawTextCentered(screen, title, newFace(48), l.w/2, l.h/2-40, overlayTextColor)
-	drawTextCentered(screen, "The word was: "+r.hidden.Word, newFace(26), l.w/2, l.h/2+8, cloudInterior)
-	drawTextCentered(screen, "Press Enter to return to the menu", newFace(20), l.w/2, l.h/2+52, guessColor)
+	drawTextCentered(screen, msg, newFace(64), l.w/2, l.h-72, penaltyColor)
 }

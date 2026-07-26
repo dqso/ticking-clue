@@ -40,7 +40,19 @@ func newOptionsScene(words *flyingWords, settings *Settings) *OptionsScene {
 		})),
 	))
 
+	content.AddChild(widget.NewText(
+		widget.TextOpts.Text("Choose your level:", facePtr(24), uiTextColor),
+		widget.TextOpts.WidgetOpts(widget.WidgetOpts.LayoutData(widget.RowLayoutData{
+			Position: widget.RowLayoutPositionCenter,
+		})),
+	))
+
 	content.AddChild(s.levelGrid())
+
+	// A small gap between the level buttons and the Back button.
+	content.AddChild(widget.NewContainer(
+		widget.ContainerOpts.WidgetOpts(widget.WidgetOpts.MinSize(0, 16)),
+	))
 
 	content.AddChild(newMenuButton("Back", func() {
 		s.back = true

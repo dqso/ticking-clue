@@ -36,11 +36,12 @@ type Settings struct {
 	Levels [levelCount]bool
 }
 
-// newSettings returns the default settings with every level enabled.
+// newSettings returns the default settings with the A1..B2 levels enabled (the
+// C levels stay off by default, so the starting difficulty is moderate).
 func newSettings() *Settings {
 	s := &Settings{}
-	for i := range s.Levels {
-		s.Levels[i] = true
+	for lvl := LevelA1; lvl <= LevelB2; lvl++ {
+		s.Levels[lvl] = true
 	}
 	return s
 }

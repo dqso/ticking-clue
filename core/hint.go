@@ -9,6 +9,7 @@ import (
 	eimage "github.com/ebitenui/ebitenui/image"
 	"github.com/ebitenui/ebitenui/widget"
 	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/text/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
@@ -17,8 +18,8 @@ import (
 // The word-length and arrow-colors hints have no time cost at all: they speed
 // up the timer instead (see hintTimeScaleStep).
 const (
-	hintLinkCost = 15 * time.Second
-	hintPosCost  = 10 * time.Second
+	hintLinkCost = 45 * time.Second
+	hintPosCost  = 1*time.Minute + 30*time.Second
 )
 
 // Hint cell sizes: the outer button and the baked icon+cost graphic inside it.
@@ -186,15 +187,17 @@ func (r *round) hasUnrevealedLink() bool {
 	return false
 }
 
-// useLinkHint reveals one random not yet shown neighbor for a time cost and
-// returns it (so the scene can animate it). Neighbors of the player's enabled
-// levels are offered first; only once they are all shown does it fall back to
-// neighbors of other levels. When every neighbor is already shown it does
-// nothing, costs nothing, and returns nil.
-func (r *round) useLinkHint() *Node {
-	if r.state != roundPlaying {
-		return nil
-	}
+// linkPreferredChance is how often the link hint reveals a neighbor of one of
+// the player's enabled levels. The rest of the time it reveals a neighbor of a
+// different level, so the map is not perfectly filtered. When only one of the
+// two groups has words left, that group is used every time.
+const linkPreferredChance = 0.90
+
+// pickLink chooses the neighbor the link hint will reveal next among the still
+// hidden ones. With linkPreferredChance it comes from the player's enabled
+// levels, otherwise from the other levels; each group is used alone when the
+// other is empty. Returns nil when every neighbor is already shown.
+func (r *round) pickLink() *Node {
 	var preferred, others []*Node
 	for _, n := range r.links {
 		if _, ok := r.revealedSet[n.ID]; ok {
@@ -206,17 +209,56 @@ func (r *round) useLinkHint() *Node {
 			others = append(others, n)
 		}
 	}
-	// Prefer enabled-level neighbors; use the rest only when those run out.
-	candidates := preferred
-	if len(candidates) == 0 {
-		candidates = others
+	pool := preferred
+	switch {
+	case len(preferred) == 0:
+		pool = others
+	case len(others) > 0 && rand.Float64() >= linkPreferredChance:
+		pool = others
 	}
-	if len(candidates) == 0 {
+	if len(pool) == 0 {
+		return nil
+	}
+	return pool[rand.IntN(len(pool))]
+}
+
+// ensureNextLink keeps nextLink pointing at a still hidden neighbor, re-rolling
+// it when it is missing or has since been revealed by a guess or another hint.
+func (r *round) ensureNextLink() {
+	if r.nextLink != nil {
+		if _, shown := r.revealedSet[r.nextLink.ID]; !shown {
+			return
+		}
+	}
+	r.nextLink = r.pickLink()
+}
+
+// nextLinkLevel reports the CEFR level of the word the link hint will reveal
+// next, so the hint cell can show it. ok is false when no neighbor is left.
+func (r *round) nextLinkLevel() (Level, bool) {
+	r.ensureNextLink()
+	if r.nextLink == nil {
+		return 0, false
+	}
+	return r.nextLink.MaxLevel(), true
+}
+
+// useLinkHint reveals the pre-rolled next neighbor (see pickLink) for a time
+// cost and returns it so the scene can animate it, then pre-rolls the following
+// one for the cell. When every neighbor is already shown it does nothing, costs
+// nothing, and returns nil.
+func (r *round) useLinkHint() *Node {
+	if r.state != roundPlaying {
+		return nil
+	}
+	r.ensureNextLink()
+	pick := r.nextLink
+	if pick == nil {
 		return nil
 	}
 	r.applyDelta(-hintLinkCost)
-	pick := candidates[rand.IntN(len(candidates))]
 	r.revealPath([]*Node{r.hidden, pick}, true)
+	r.nextLink = r.pickLink() // pre-roll the next reveal for the cell icon
 	return pick
 }
 
@@ -272,12 +314,15 @@ type hintButton struct {
 
 // hintUI holds the hint column and its cells so unusable ones can be removed.
 // letterGraphic is the letter cell's image, redrawn when its dynamic cost
-// changes; letterCost is the price it currently shows.
+// changes; letterCost is the price it currently shows. linkGraphic is the link
+// cell's image, redrawn when the next reveal's level (linkNote) changes.
 type hintUI struct {
 	column        *widget.Container
 	buttons       []*hintButton
 	letterGraphic *ebiten.Image
 	letterCost    time.Duration
+	linkGraphic   *ebiten.Image
+	linkNote      string
 }
 
 // hintColumn builds the right-anchored column of hint cells and registers each
@@ -295,18 +340,22 @@ func (s *GameScene) hintColumn() *widget.Container {
 		})),
 	)
 	letterCost := s.round.letterHintCost()
-	letterGraphic := makeHintCellGraphic(hintLetterKind, letterCost)
+	letterGraphic := makeHintCellGraphic(hintLetterKind, letterCost, "")
+	linkNote := s.linkLevelNote()
+	linkGraphic := makeHintCellGraphic(hintLinkKind, hintLinkCost, linkNote)
 	// The length and colors hints show a speed multiplier, not a time cost, so
 	// the cost argument is ignored for them (see drawHintCellGraphic).
-	length := newHintCell(makeHintCellGraphic(hintLengthKind, 0), s.hintUseLength)
+	length := newHintCell(makeHintCellGraphic(hintLengthKind, 0, ""), s.hintUseLength)
 	letter := newHintCell(letterGraphic, s.hintUseLetter)
-	link := newHintCell(makeHintCellGraphic(hintLinkKind, hintLinkCost), s.hintUseLinkHint)
-	colors := newHintCell(makeHintCellGraphic(hintColorsKind, 0), s.hintUseColors)
-	pos := newHintCell(makeHintCellGraphic(hintPosKind, hintPosCost), s.hintUsePos)
+	link := newHintCell(linkGraphic, s.hintUseLinkHint)
+	colors := newHintCell(makeHintCellGraphic(hintColorsKind, 0, ""), s.hintUseColors)
+	pos := newHintCell(makeHintCellGraphic(hintPosKind, hintPosCost, ""), s.hintUsePos)
 	s.hints = hintUI{
 		column:        column,
 		letterGraphic: letterGraphic,
 		letterCost:    letterCost,
+		linkGraphic:   linkGraphic,
+		linkNote:      linkNote,
 		buttons: []*hintButton{
 			// One-time hints go away once bought; the link hint once every
 			// neighbor has been revealed; the letter hint appears only after the
@@ -337,6 +386,7 @@ func (s *GameScene) refreshHints() {
 		}
 	}
 	s.updateLetterCost()
+	s.updateLinkLevel()
 }
 
 // updateLetterCost re-bakes the letter cell's price when it changes. The cost
@@ -351,7 +401,31 @@ func (s *GameScene) updateLetterCost() {
 		return
 	}
 	s.hints.letterCost = cost
-	drawHintCellGraphic(s.hints.letterGraphic, hintLetterKind, cost)
+	drawHintCellGraphic(s.hints.letterGraphic, hintLetterKind, cost, "")
+}
+
+// linkLevelNote is the CEFR label of the word the link hint will reveal next,
+// shown on the cell's cloud; empty when no neighbor is left.
+func (s *GameScene) linkLevelNote() string {
+	if lvl, ok := s.round.nextLinkLevel(); ok {
+		return levelLabels[lvl]
+	}
+	return ""
+}
+
+// updateLinkLevel re-bakes the link cell's cloud when the next reveal's level
+// changes (after a link is bought, or after the pre-rolled word was guessed and
+// re-rolled). It redraws only on an actual change.
+func (s *GameScene) updateLinkLevel() {
+	if s.hints.linkGraphic == nil {
+		return
+	}
+	note := s.linkLevelNote()
+	if note == s.hints.linkNote {
+		return
+	}
+	s.hints.linkNote = note
+	drawHintCellGraphic(s.hints.linkGraphic, hintLinkKind, hintLinkCost, note)
 }
 
 // newHintCell builds one hint button from a baked graphic, calling onClick when
@@ -373,15 +447,17 @@ func newHintCell(graphic *ebiten.Image, onClick func()) *widget.Button {
 }
 
 // makeHintCellGraphic returns a new image with the hint icon and cost baked in.
-func makeHintCellGraphic(kind hintKind, cost time.Duration) *ebiten.Image {
+// note is only used by the link cell, where it is the next reveal's level.
+func makeHintCellGraphic(kind hintKind, cost time.Duration, note string) *ebiten.Image {
 	img := ebiten.NewImage(hintCellInner, hintCellInner)
-	drawHintCellGraphic(img, kind, cost)
+	drawHintCellGraphic(img, kind, cost, note)
 	return img
 }
 
 // drawHintCellGraphic (re)draws the icon and cost onto img, so a dynamic cost
-// can be refreshed in place without allocating a new image.
-func drawHintCellGraphic(img *ebiten.Image, kind hintKind, cost time.Duration) {
+// (or the link cell's level note) can be refreshed in place without allocating
+// a new image.
+func drawHintCellGraphic(img *ebiten.Image, kind hintKind, cost time.Duration, note string) {
 	img.Clear()
 	switch kind {
 	case hintLengthKind:
@@ -389,19 +465,28 @@ func drawHintCellGraphic(img *ebiten.Image, kind hintKind, cost time.Duration) {
 	case hintLetterKind:
 		drawLetterIcon(img)
 	case hintLinkKind:
-		drawLinkIcon(img)
+		drawLinkIcon(img, note)
 	case hintColorsKind:
 		drawColorsIcon(img)
 	case hintPosKind:
 		drawPosIcon(img)
 	}
-	// Speed hints (length, colors) do not cost seconds: they speed up the timer,
-	// so their price reads as a stacking multiplier (e.g. "×1.5") instead.
-	label := "-" + formatMMSS(cost)
+	face := newFace(16)
+	// Speed hints (length, colors) do not cost seconds: they speed up the timer.
+	// Their price is a fast-forward glyph plus the stacking multiplier (e.g.
+	// ">>×1.5"), drawn in the debuff color like the HUD speed indicator, so it
+	// reads as "time runs faster" rather than a time cost.
 	if kind == hintLengthKind || kind == hintColorsKind {
-		label = "×" + formatScale(hintTimeScaleStep)
+		txt := "×" + formatScale(hintTimeScaleStep)
+		const iconW, iconH, gap = 13.0, 12.0, 4.0
+		tw, _ := text.Measure(txt, face, 0)
+		y := float64(hintCellInner) - 24
+		left := float64(hintCellInner)/2 - (iconW+gap+tw)/2
+		drawFastForward(img, left, y, iconW, iconH, penaltyColor)
+		drawTextLeft(img, txt, face, left+iconW+gap, y-2, penaltyColor)
+		return
 	}
-	drawTextCentered(img, label, newFace(16),
+	drawTextCentered(img, "-"+formatMMSS(cost), face,
 		float64(hintCellInner)/2, float64(hintCellInner)-13, hintCostColor)
 }
 
@@ -431,11 +516,14 @@ func drawLetterIcon(dst *ebiten.Image) {
 	}
 }
 
-// drawLinkIcon draws a small arrow pointing into a small cloud.
-func drawLinkIcon(dst *ebiten.Image) {
-	cx, cy := float64(hintCellInner)/2+12, 30.0
+// drawLinkIcon draws a small cloud with the level of the word that the hint
+// will reveal next written inside it (note is empty when no neighbor is left).
+func drawLinkIcon(dst *ebiten.Image, note string) {
+	cx, cy := float64(hintCellInner)/2, 30.0
 	drawCloudShape(dst, cx, cy, 20, 12, 4, 101)
-	drawArrow(dst, 12, cy+14, cx-4, cy+2, arrowColor, 1)
+	if note != "" {
+		drawTextCentered(dst, note, newFace(13), cx, cy, cloudTextColor)
+	}
 }
 
 // drawPosIcon draws the two-line label "verb or / ...", standing for the

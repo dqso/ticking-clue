@@ -13,7 +13,7 @@ import (
 // into colorful paint splats piling up over the whole graph.
 const (
 	// winLaunchTicks is how long new rockets keep launching after the win.
-	winLaunchTicks = 400
+	winLaunchTicks = 200
 	// winLaunchEvery is the tick period between rocket launches.
 	winLaunchEvery = 5
 	// winRocketSpeed is the base upward speed of a rising rocket (px per tick).

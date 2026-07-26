@@ -55,11 +55,19 @@ type GameScene struct {
 	// winFX is the victory salute: paint splats piling up over the graph on a
 	// win (state and logic live in win_fx.go).
 	winFX winFX
-	// hintsHidden reports that the hint panel was removed after the win.
+	// hintsHidden reports that the hint panel was removed after the round ended.
 	hintsHidden bool
+	// bottomRight is the corner stack (Surrender button above the zoom row);
+	// surrenderBtn is kept so it can be removed once the round is over.
+	bottomRight     *widget.Container
+	surrenderBtn    *widget.Button
+	surrenderHidden bool
+	// lossLogged reports that the defeat note was already added to the journal,
+	// so it is written exactly once.
+	lossLogged bool
 }
 
-// hideHints removes the hint panel from the UI once the round is won.
+// hideHints removes the hint panel from the UI once the round is over.
 func (s *GameScene) hideHints() {
 	if s.hintsHidden {
 		return
@@ -68,9 +76,23 @@ func (s *GameScene) hideHints() {
 	s.hintsHidden = true
 }
 
+// hideSurrender removes the Surrender button once the round is over: there is
+// nothing left to give up. The zoom controls stay so the field is still usable.
+func (s *GameScene) hideSurrender() {
+	if s.surrenderHidden {
+		return
+	}
+	s.bottomRight.RemoveChild(s.surrenderBtn)
+	s.surrenderHidden = true
+}
+
 func newGameScene(graph *Graph, start *Node, levels [levelCount]bool) *GameScene {
 	log.Printf("hidden word: %s", start.Word)
 	s := &GameScene{round: newRound(graph, start, levels), dragCloud: -1, zoom: 1}
+	// The colors legend sticker is on the sheet from the start, so the player can
+	// learn what the arrow colors mean even before buying the hint that actually
+	// colors the graph.
+	s.colorsNote.active = true
 	s.ui = &ebitenui.UI{Container: s.buildHintUI()}
 	// Give the player a couple of free neighbor words and open the journal with
 	// them, so the map starts with a few directions to explore.
@@ -78,13 +100,14 @@ func newGameScene(graph *Graph, start *Node, levels [levelCount]bool) *GameScene
 	return s
 }
 
-// buildHintUI lays out the hint column (see hint.go) and the zoom controls.
+// buildHintUI lays out the hint column (see hint.go) and the bottom-right corner
+// controls: the Surrender button next to the zoom row ([Surrender] [-] [+]).
 func (s *GameScene) buildHintUI() *widget.Container {
 	root := widget.NewContainer(widget.ContainerOpts.Layout(widget.NewAnchorLayout()))
 	root.AddChild(s.hintColumn())
 
-	// Zoom controls in the bottom-right corner.
-	zoom := widget.NewContainer(
+	// Bottom-right corner, one horizontal row: Surrender left of the zoom buttons.
+	corner := widget.NewContainer(
 		widget.ContainerOpts.Layout(widget.NewRowLayout(
 			widget.RowLayoutOpts.Direction(widget.DirectionHorizontal),
 			widget.RowLayoutOpts.Spacing(8),
@@ -95,10 +118,28 @@ func (s *GameScene) buildHintUI() *widget.Container {
 			VerticalPosition:   widget.AnchorLayoutPositionEnd,
 		})),
 	)
-	zoom.AddChild(newZoomButton("-", func() { s.zoomBy(1 / zoomStep) }))
-	zoom.AddChild(newZoomButton("+", func() { s.zoomBy(zoomStep) }))
-	root.AddChild(zoom)
+
+	s.surrenderBtn = newSurrenderButton(func() { s.round.surrender() })
+	corner.AddChild(s.surrenderBtn)
+	corner.AddChild(newZoomButton("-", func() { s.zoomBy(1 / zoomStep) }))
+	corner.AddChild(newZoomButton("+", func() { s.zoomBy(zoomStep) }))
+
+	s.bottomRight = corner
+	root.AddChild(corner)
 	return root
+}
+
+// newSurrenderButton builds the bottom-right button that gives up the round.
+func newSurrenderButton(onClick func()) *widget.Button {
+	return widget.NewButton(
+		widget.ButtonOpts.WidgetOpts(widget.WidgetOpts.MinSize(150, 48)),
+		widget.ButtonOpts.Image(newButtonImage()),
+		widget.ButtonOpts.Text("Surrender", facePtr(20), &widget.ButtonTextColor{Idle: uiTextColor}),
+		widget.ButtonOpts.TextPadding(widget.NewInsetsSimple(10)),
+		widget.ButtonOpts.ClickedHandler(func(args *widget.ButtonClickedEventArgs) {
+			onClick()
+		}),
+	)
 }
 
 // newZoomButton builds a small square +/- button for the zoom controls.
@@ -131,19 +172,26 @@ func (s *GameScene) Update(g *Game) error {
 	l := computeLayout(g.screenWidth, g.screenHeight, s.panX, s.panY, s.zoom)
 
 	if s.round.state != roundPlaying {
-		// On a win, drop the hint panel and play the paint salute over the graph;
-		// the player can still pan the field and use every sticker.
+		// The round is over. Both outcomes drop the hint panel and the Surrender
+		// button, keep the field pannable with every sticker usable, and slide the
+		// notes next to the now-revealed hidden word. A win additionally plays the
+		// paint salute; the notes then wait for it to fade.
+		s.hideHints()
+		s.hideSurrender()
+		if s.round.state == roundLost {
+			s.logLoss()
+		}
+		settled := true
 		if s.round.state == roundWon {
-			s.hideHints()
 			if !s.winFX.active && !s.winFX.done {
 				s.winFX.start()
 			}
 			s.winFX.update(l)
-			s.handleField(g, l)
-			// Once the paint has faded, slide the notes next to the guessed word.
-			if s.winFX.done {
-				s.moveNotesToWord(l)
-			}
+			settled = s.winFX.done
+		}
+		s.handleField(g, l)
+		if settled {
+			s.moveNotesToWord(l)
 		}
 		// Round is over: Enter or Escape returns to the main menu.
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) ||
@@ -266,10 +314,11 @@ func (s *GameScene) Draw(screen *ebiten.Image) {
 	// HUD text on top of everything.
 	drawTimer(screen, s.round, l)
 	drawGuess(screen, s.round, l)
-	// A win rains paint over the graph; a loss dims it with the end overlay.
+	// A win rains paint over the graph; a loss keeps the field as it is and just
+	// writes the result in big letters at the bottom.
 	if s.round.state == roundWon {
 		s.winFX.draw(screen, l)
 	} else if s.round.state == roundLost {
-		drawEndOverlay(screen, s.round, l)
+		drawTimeUp(screen, s.round, l)
 	}
 }
