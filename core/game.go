@@ -19,7 +19,7 @@ func NewGame(debug bool, version string, screenWidth, screenHeight int) *Game {
 		screenHeight: screenHeight,
 		scenes:       SceneManager{},
 		debug:        newDebugOverlay(debug, version),
-		settings:     newSettings(),
+		settings:     loadSettings(),
 	}
 	g.scenes.Push(newLoadingScene())
 	return g

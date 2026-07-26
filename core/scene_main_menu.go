@@ -47,7 +47,7 @@ func newMainMenuScene(graph *Graph) *MainMenuScene {
 	menu.AddChild(newMenuButton("New game", func() {
 		s.action = func(g *Game) error {
 			var start *Node
-			start = g.graph.ByWord("cafe latté")
+			//start = g.graph.ByWord("cafe latté")
 
 			// The round starts from a random word of an enabled level with
 			// enough links to give the player several directions to explore.

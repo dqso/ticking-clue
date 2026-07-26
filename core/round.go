@@ -17,7 +17,7 @@ import (
 // of them are placeholders until the balance is decided.
 const (
 	// roundDuration is the time the player starts the round with.
-	roundDuration = 30 * time.Minute
+	roundDuration = 25 * time.Minute
 	// wrongGuessPenalty is lost for an unknown or too far word.
 	wrongGuessPenalty = 5 * time.Second
 	// guessRewardBase is the reward for a word one link away; words farther

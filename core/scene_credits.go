@@ -64,14 +64,24 @@ func newCreditsScene(words *flyingWords) *CreditsScene {
 		))
 	}
 
-	// TODO: write the game description when the gameplay is settled.
-	centered("TODO: game description", 18)
-	centered("TODO: controls", 18)
-	centered("originally created by Denis Proleev ([link=dqso]github.com/dqso[/link])\n"+
+	// Short pitch answering the "What is it?" panel title, then the controls.
+	centered("A word is hidden. Around it grows a graph of related words -\n"+
+		"synonyms, antonyms and more.\n"+
+		"Type your guesses: a close word reveals more of the graph and\n"+
+		"buys you time, a wrong one costs it. Name the hidden word before\n"+
+		"the clock counts down. Buy hints to close in - but beware, some\n"+
+		"of them only make time run faster.", 18)
+
+	centered("Controls", 24)
+	centered("Type a word and press Enter to guess, Backspace to erase.\n"+
+		"Drag the sheet to pan, drag a word to move it, use [+]/[-] to zoom.\n"+
+		"Click a hint cell to buy it. Press Esc to pause.", 16)
+
+	centered("Originally created by Denis Proleev ([link=dqso]github.com/dqso[/link])\n"+
 		"for GMTK Game Jam 2026, theme: count down", 16)
 
 	centered("Game engine", 24)
-	centered("[link=ebitengine]Ebitengine[/link] (github.com/hajimehoshi/ebiten),\n"+
+	centered("Ebitengine [link=ebitengine]github.com/hajimehoshi/ebiten[/link],\n"+
 		"licensed under the Apache License 2.0", 16)
 
 	centered("Fonts", 24)
@@ -79,7 +89,7 @@ func newCreditsScene(words *flyingWords) *CreditsScene {
 		"licensed under the SIL Open Font License 1.1", 16)
 
 	centered("Content", 24)
-	centered("Word data is based on [link=wiktionary]Wiktionary[/link] (en.wiktionary.org),\n"+
+	centered("Word data is based on Wiktionary [link=wiktionary]en.wiktionary.org[/link],\n"+
 		"dual-licensed under CC BY-SA 4.0 and GFDL", 16)
 
 	// The content is scrollable: it may not fit on small screens.

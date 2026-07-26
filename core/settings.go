@@ -29,8 +29,8 @@ var levelBits = [levelCount]pb.Attributes{
 // levelLabels are the button captions for each Level, ordered A1..C2.
 var levelLabels = [levelCount]string{"A1", "A2", "B1", "B2", "C1", "C2"}
 
-// Settings holds the in-session player options. It is not persisted yet: it
-// lives on *Game for the lifetime of the process.
+// Settings holds the player options. It lives on *Game and is persisted across
+// sessions by loadSettings/save (a file on desktop, localStorage in wasm).
 type Settings struct {
 	// Levels[i] reports whether CEFR level i is enabled for word selection.
 	Levels [levelCount]bool

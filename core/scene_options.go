@@ -126,6 +126,8 @@ func (s *OptionsScene) Update(g *Game) error {
 	}
 	if s.back {
 		s.back = false
+		// Persist the level selection when leaving the options screen.
+		s.settings.save()
 		g.Pop()
 	}
 	return nil
