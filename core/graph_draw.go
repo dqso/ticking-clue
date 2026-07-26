@@ -12,6 +12,10 @@ import (
 // paperGridCell is the size of one square of the notebook grid.
 const paperGridCell = 34.0
 
+// arrowCloudGap is the clearance (in screen pixels at zoom 1) left between an
+// arrow end and the cloud outline, so the arrow never touches the puffs.
+const arrowCloudGap = 2.0
+
 // fx is a short float64->float32 helper for the vector package calls.
 func fx(v float64) float32 { return float32(v) }
 
@@ -43,11 +47,13 @@ func drawGraphArrows(screen *ebiten.Image, r *round, l gameLayout, pos []nodePos
 		childSize := l.linkSize(rn.node.Word)
 		var px, py float64
 		var pSize cloudSize
+		var pSeed int64
 		if rn.parent < 0 {
-			px, py, pSize = l.cx, l.cy, centralSize
+			px, py, pSize, pSeed = l.cx, l.cy, centralSize, r.hidden.ID
 		} else {
 			px, py = pos[rn.parent].x, pos[rn.parent].y
 			pSize = l.linkSize(r.revealed[rn.parent].node.Word)
+			pSeed = r.revealed[rn.parent].node.ID
 		}
 		dx, dy := pos[i].x-px, pos[i].y-py
 		dist := math.Hypot(dx, dy)
@@ -55,9 +61,12 @@ func drawGraphArrows(screen *ebiten.Image, r *round, l gameLayout, pos []nodePos
 			continue
 		}
 		ux, uy := dx/dist, dy/dist
-		// Start and stop the arrow right on each cloud's oval outline.
-		tailLen := ellipseEdge(pSize.hx, pSize.hy, ux, uy)
-		headLen := ellipseEdge(childSize.hx, childSize.hy, ux, uy)
+		// Stop the arrow at each cloud's lumpy outline (plus a small gap), so its
+		// ends sit clear of the puffs instead of vanishing under them. The child
+		// outline is crossed by the ray coming back toward its center (-u).
+		gap := arrowCloudGap * l.zoom
+		tailLen := cloudRayDist(cloudOutline(pSize.hx, pSize.hy, pSeed), ux, uy) + gap
+		headLen := cloudRayDist(cloudOutline(childSize.hx, childSize.hy, rn.node.ID), -ux, -uy) + gap
 		tailX, tailY := px+tailLen*ux, py+tailLen*uy
 		headX, headY := pos[i].x-headLen*ux, pos[i].y-headLen*uy
 		// Skip when the two clouds nearly touch and leave no room for an arrow.
@@ -67,11 +76,15 @@ func drawGraphArrows(screen *ebiten.Image, r *round, l gameLayout, pos []nodePos
 		// Fade the arrow with the graph distance of its far end, so distant
 		// relations look fainter than close ones.
 		alpha := arrowAlpha(len(rn.path) - 1)
-		clr := arrowColor
 		if r.colorsShown {
-			clr = edgeColor(rn.edge)
+			// The colors hint reveals each relation by its color and its arrow
+			// shape (double head, cup, square, or tick).
+			drawRelationArrow(screen, tailX, tailY, headX, headY, rn.edge, fadeColor(edgeColor(rn.edge), alpha), l.zoom)
+		} else {
+			// Before the hint: plain gray lines with no heads, so no relation
+			// direction or type is revealed.
+			drawShaft(screen, tailX, tailY, headX, headY, fadeColor(arrowColor, alpha), l.zoom)
 		}
-		drawArrow(screen, tailX, tailY, headX, headY, fadeColor(clr, alpha), l.zoom)
 		if rn.skipped > 0 {
 			drawSkippedNodes(screen, tailX, tailY, headX, headY, rn.skipped, l.zoom, alpha)
 		}

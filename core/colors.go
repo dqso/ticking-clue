@@ -21,10 +21,8 @@ var (
 	arrowColor    = color.NRGBA{R: 0x7a, G: 0x76, B: 0x86, A: 0xff}
 	synonymColor  = color.NRGBA{R: 0x2f, G: 0x9e, B: 0x54, A: 0xff} // green
 	antonymColor  = color.NRGBA{R: 0xd6, G: 0x3a, B: 0x3a, A: 0xff} // red
-	hypernymColor = color.NRGBA{R: 0x2f, G: 0x6f, B: 0xd6, A: 0xff} // blue: broader term
-	hyponymColor  = color.NRGBA{R: 0x1f, G: 0x9e, B: 0xa8, A: 0xff} // teal: narrower term
-	holonymColor  = color.NRGBA{R: 0xe0, G: 0x82, B: 0x1e, A: 0xff} // orange: whole
-	meronymColor  = color.NRGBA{R: 0xcf, G: 0xa8, B: 0x1e, A: 0xff} // amber: part
+	hyponymyColor = color.NRGBA{R: 0x2f, G: 0x6f, B: 0xd6, A: 0xff} // blue: hyponymy
+	meronymyColor = color.NRGBA{R: 0xe0, G: 0x82, B: 0x1e, A: 0xff} // orange: meronymy
 	coordColor    = color.NRGBA{R: 0x8a, G: 0x4f, B: 0xc0, A: 0xff} // purple: coordinate term
 	derivedColor  = color.NRGBA{R: 0xc0, G: 0x4f, B: 0x9a, A: 0xff} // magenta: derived
 	guessColor    = color.NRGBA{R: 0x8a, G: 0x86, B: 0x94, A: 0xff}
@@ -46,29 +44,53 @@ var (
 	stickerColor  = color.NRGBA{R: 0xfd, G: 0xe7, B: 0x8a, A: 0xff}
 	stickerEdge   = color.NRGBA{R: 0xd9, G: 0xbf, B: 0x55, A: 0xff}
 	listTextColor = color.NRGBA{R: 0x40, G: 0x38, B: 0x18, A: 0xff}
+
+	// Colors note: a white sticky note dropped on the sheet when the "reveal
+	// colors" hint is bought. Collapsed it shows crossed arrows; expanded it
+	// holds the arrow legend.
+	colorsNoteColor = color.NRGBA{R: 0xfb, G: 0xfb, B: 0xf9, A: 0xff}
+	colorsNoteEdge  = color.NRGBA{R: 0xcc, G: 0xc9, B: 0xd2, A: 0xff}
 )
 
-// edgeColor maps a relation type to its arrow color. Relations without a
-// dedicated color (RELATED, HAS_*, unspecified) fall back to neutral.
+// edgeColor maps a relation type to its arrow color. Hypernym and hyponym share
+// one color (hyponymy), as do holonym and meronym (meronymy). Relations without
+// a dedicated color (RELATED, HAS_*, unspecified) fall back to neutral.
 func edgeColor(t pb.EdgeType) color.NRGBA {
 	switch t {
 	case pb.EdgeType_SYNONYM:
 		return synonymColor
 	case pb.EdgeType_ANTONYM:
 		return antonymColor
-	case pb.EdgeType_HYPERNYM:
-		return hypernymColor
-	case pb.EdgeType_HYPONYM:
-		return hyponymColor
-	case pb.EdgeType_HOLONYM:
-		return holonymColor
-	case pb.EdgeType_MERONYM:
-		return meronymColor
+	case pb.EdgeType_HYPERNYM, pb.EdgeType_HYPONYM:
+		return hyponymyColor
+	case pb.EdgeType_HOLONYM, pb.EdgeType_MERONYM:
+		return meronymyColor
 	case pb.EdgeType_COORDINATE_TERM:
 		return coordColor
 	case pb.EdgeType_DERIVED:
 		return derivedColor
 	default:
 		return arrowColor
+	}
+}
+
+// edgeName returns the canonical name of a relation. Hypernym and hyponym are
+// one relation ("hyponymy"), as are holonym and meronym ("meronymy").
+func edgeName(t pb.EdgeType) string {
+	switch t {
+	case pb.EdgeType_SYNONYM:
+		return "synonym"
+	case pb.EdgeType_ANTONYM:
+		return "antonym"
+	case pb.EdgeType_HYPERNYM, pb.EdgeType_HYPONYM:
+		return "hyponymy"
+	case pb.EdgeType_HOLONYM, pb.EdgeType_MERONYM:
+		return "meronymy"
+	case pb.EdgeType_COORDINATE_TERM:
+		return "coordinate term"
+	case pb.EdgeType_DERIVED:
+		return "derived"
+	default:
+		return "related"
 	}
 }

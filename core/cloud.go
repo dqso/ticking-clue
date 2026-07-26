@@ -191,23 +191,26 @@ func stadiumOutline(s, span, hy float64) (x, y, nx, ny float64) {
 	}
 }
 
-// drawCloudShape draws a flat, word-shaped cloud from a set of circles. A row
-// of circles along the x axis (a "stadium") fills the wide interior, while
-// random puffs scattered along the whole outline form a lumpy, irregular edge.
-// Every circle is drawn once in the outline color, then a smaller one in the
-// interior color, leaving a ring of width strokeW. The seed keeps the puffs
-// stable between frames but different from cloud to cloud.
-func drawCloudShape(dst *ebiten.Image, cx, cy, hx, hy, strokeW float64, seed int64) {
+// cloudPuff is one circle of a cloud: its center offset from the cloud center
+// and its radius.
+type cloudPuff struct{ dx, dy, r float64 }
+
+// cloudPuffs builds the circles that make up a cloud: a row of circles along the
+// x axis (a "stadium") fills the wide interior, and random puffs scattered along
+// the whole outline form the lumpy, irregular edge. The seed keeps the puffs
+// stable between frames but different from cloud to cloud. Both the drawing and
+// the outline path (cloudOutline) use this, so what is drawn and where arrows
+// stop always agree.
+func cloudPuffs(hx, hy float64, seed int64) []cloudPuff {
 	rng := rand.New(rand.NewPCG(uint64(seed)+1, 0x9e3779b97f4a7c15))
-	type puff struct{ dx, dy, r float64 }
-	var puffs []puff
+	var puffs []cloudPuff
 	// Stadium core: circles of radius hy stepping along x fill the interior
 	// with a flat oval span the full height of the cloud.
 	span := math.Max(0, hx-hy)
 	steps := int(span/(hy*0.5)) + 1
 	for i := 0; i <= steps; i++ {
 		t := -span + 2*span*float64(i)/float64(steps)
-		puffs = append(puffs, puff{t, 0, hy})
+		puffs = append(puffs, cloudPuff{t, 0, hy})
 	}
 	// Outline puffs: walk the whole stadium outline at a roughly constant
 	// spacing (so wider clouds get more puffs) and drop a circle at each step.
@@ -225,14 +228,86 @@ func drawCloudShape(dst *ebiten.Image, cx, cy, hx, hy, strokeW float64, seed int
 		bx, by, nx, ny := stadiumOutline(u*perim, span, hy)
 		r := hy * (0.5 + rng.Float64()*0.7)      // 0.5..1.2 of the height
 		inset := hy * (0.25 + rng.Float64()*0.3) // pull the center into the body
-		puffs = append(puffs, puff{bx - nx*inset, by - ny*inset, r})
+		puffs = append(puffs, cloudPuff{bx - nx*inset, by - ny*inset, r})
 	}
+	return puffs
+}
+
+// drawCloudShape draws a flat, word-shaped cloud from its puffs. Every circle is
+// drawn once in the outline color, then a smaller one in the interior color,
+// leaving a ring of width strokeW.
+func drawCloudShape(dst *ebiten.Image, cx, cy, hx, hy, strokeW float64, seed int64) {
+	puffs := cloudPuffs(hx, hy, seed)
 	for _, p := range puffs {
 		vector.FillCircle(dst, fx(cx+p.dx), fx(cy+p.dy), fx(p.r), cloudStroke, true)
 	}
 	for _, p := range puffs {
 		vector.FillCircle(dst, fx(cx+p.dx), fx(cy+p.dy), fx(p.r-strokeW), cloudInterior, true)
 	}
+}
+
+// cloudOutlineSamples is how many directions trace a cloud's rough outline path.
+const cloudOutlineSamples = 48
+
+// puffsReach returns how far the puff silhouette extends from the cloud center
+// along the unit direction (ux, uy): the point where a ray from the center
+// leaves the union of the puffs. Used only to trace the outline path.
+func puffsReach(puffs []cloudPuff, ux, uy float64) float64 {
+	best := 0.0
+	for _, p := range puffs {
+		cd := p.dx*ux + p.dy*uy                // puff center projected on the ray
+		perp2 := p.dx*p.dx + p.dy*p.dy - cd*cd // squared distance from ray to center
+		disc := p.r*p.r - perp2
+		if disc <= 0 {
+			continue // the ray misses this puff
+		}
+		if t := cd + math.Sqrt(disc); t > best {
+			best = t
+		}
+	}
+	return best
+}
+
+// cloudOutline traces a rough closed outline path of a cloud: at evenly spaced
+// directions it samples how far the puffs reach, giving a lumpy polygon that
+// follows the cloud's silhouette. Arrows stop where they cross this path, so
+// their ends sit just outside the cloud instead of vanishing under a puff.
+// Points are in cloud-local coords (relative to the cloud center).
+func cloudOutline(hx, hy float64, seed int64) [][2]float64 {
+	puffs := cloudPuffs(hx, hy, seed)
+	pts := make([][2]float64, cloudOutlineSamples)
+	for k := range pts {
+		a := 2 * math.Pi * float64(k) / float64(cloudOutlineSamples)
+		ux, uy := math.Cos(a), math.Sin(a)
+		d := puffsReach(puffs, ux, uy)
+		pts[k] = [2]float64{d * ux, d * uy}
+	}
+	return pts
+}
+
+// cloudRayDist returns the distance from the cloud center to where a ray leaving
+// it along (ux, uy) crosses the outline path. When several edges are hit (a
+// concave dip between puffs), the farthest crossing is kept so the arrow clears
+// the whole silhouette.
+func cloudRayDist(outline [][2]float64, ux, uy float64) float64 {
+	best := 0.0
+	n := len(outline)
+	for i := 0; i < n; i++ {
+		ax, ay := outline[i][0], outline[i][1]
+		bx, by := outline[(i+1)%n][0], outline[(i+1)%n][1]
+		ex, ey := bx-ax, by-ay
+		det := ex*uy - ey*ux
+		if math.Abs(det) < 1e-9 {
+			continue // ray parallel to this edge
+		}
+		// Solve center + t*(ux,uy) = A + s*(B-A) for t >= 0 and s in [0, 1].
+		t := (ex*ay - ey*ax) / det
+		s := (ux*ay - uy*ax) / det
+		if t >= 0 && s >= 0 && s <= 1 && t > best {
+			best = t
+		}
+	}
+	return best
 }
 
 // drawCloudText draws the given lines centered at (cx, cy), one under another.

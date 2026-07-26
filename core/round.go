@@ -24,7 +24,7 @@ const (
 	guessRewardBase = 25 * time.Second
 	// maxGuessDist is the deepest a guessed word may sit from the hidden
 	// word to still count as a hit; farther words are treated as a miss.
-	maxGuessDist = 15
+	maxGuessDist = 4
 	// feedbackFlashTime is how long the last guess result stays on screen.
 	feedbackFlashTime = 1200 * time.Millisecond
 )
@@ -216,6 +216,9 @@ type guessOutcome struct {
 	kind guessResult
 	word string
 	node *Node // the guessed graph node on a reward; nil otherwise
+	// strikes is how many times the word is crossed out in the miss list:
+	// 2 when it is not in the dictionary, 1 when it is known but too far.
+	strikes int
 }
 
 // submit resolves the current guess, clears the input, and returns the outcome.
@@ -238,13 +241,13 @@ func (r *round) submit() guessOutcome {
 	node := r.graph.ByWord(word)
 	if node == nil {
 		r.miss("unknown word")
-		return guessOutcome{kind: guessPenalty, word: word}
+		return guessOutcome{kind: guessPenalty, word: word, strikes: 2}
 	}
 	path := r.graph.shortestPath(r.hidden, node, maxGuessDist)
 	if path == nil {
 		// Known word, but not close enough to the hidden one.
 		r.miss("too far")
-		return guessOutcome{kind: guessPenalty, word: word}
+		return guessOutcome{kind: guessPenalty, word: word, strikes: 1}
 	}
 	// Show the guessed word (and, when far, its skipped path), then reward.
 	r.revealPath(path, false)
@@ -261,11 +264,17 @@ func (r *round) miss(reason string) {
 }
 
 // unmaskTokens removes the given word's tokens from the hidden mask set, so a
-// token the player has typed is no longer hidden inside hint clouds.
-func (r *round) unmaskTokens(word string) {
+// token the player has typed is no longer hidden inside hint clouds. It reports
+// whether any token was actually masked before, i.e. something got revealed.
+func (r *round) unmaskTokens(word string) bool {
+	unmasked := false
 	for _, tok := range strings.FieldsFunc(word, isTokenSep) {
-		delete(r.hiddenTokens, tok)
+		if _, masked := r.hiddenTokens[tok]; masked {
+			delete(r.hiddenTokens, tok)
+			unmasked = true
+		}
 	}
+	return unmasked
 }
 
 // rewardForDistance returns the time gained for a word at graph distance d.

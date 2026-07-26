@@ -36,9 +36,19 @@ type flyGuess struct {
 	kind  guessResult
 	node  *Node // reward target; nil for a miss
 	t     float64
+	// strikes is how many times a landed miss is crossed out in the list.
+	strikes int
 	// fromCenter starts the flight at the hidden cloud (used by the link hint)
 	// instead of at the input line.
 	fromCenter bool
+}
+
+// missedWord is one crossed-out word in the miss list plus how many times it is
+// struck: one line when it was known but too far, two when it was not in the
+// dictionary.
+type missedWord struct {
+	word    string
+	strikes int
 }
 
 // guessFX groups the flying guesses and the miss list, so the scene keeps a
@@ -46,8 +56,9 @@ type flyGuess struct {
 type guessFX struct {
 	// flyers are the guessed words animating to their place or into the list.
 	flyers []*flyGuess
-	// missed is the sorted, unknown or too-far words shown in the list.
-	missed []string
+	// missed are the crossed-out words shown in the list, ordered by strike
+	// count (too-far words first, then unknown ones), each group alphabetical.
+	missed []missedWord
 	// scroll is the vertical scroll offset of the expanded list.
 	scroll float64
 	// missedSet is the same words as a set, for O(1) "already rejected" checks;
@@ -78,7 +89,13 @@ func (s *GameScene) submitGuess() {
 	word := strings.TrimSpace(strings.ToLower(s.round.guess))
 	if word != "" && word != s.round.hidden.Word && s.alreadyKnown(word) {
 		s.round.guess = ""
-		s.round.setFeedback(guessKnown, "already tried", 0)
+		// A known word still un-masks its tokens, so typing a masked cloud's
+		// word reveals it instead of being declined for good.
+		if s.round.unmaskTokens(word) {
+			s.round.setFeedback(guessKnown, "revealed", 0)
+		} else {
+			s.round.setFeedback(guessKnown, "already tried", 0)
+		}
 		return
 	}
 	s.startFlyer(s.round.submit(), false)
@@ -115,6 +132,7 @@ func (s *GameScene) startFlyer(res guessOutcome, fromCenter bool) {
 		lines:      wrapWord(res.word),
 		kind:       res.kind,
 		node:       res.node,
+		strikes:    res.strikes,
 		fromCenter: fromCenter,
 	})
 }
@@ -133,7 +151,7 @@ func (s *GameScene) updateFlyers() {
 			continue
 		}
 		if f.kind == guessPenalty {
-			s.addMissed(f.word)
+			s.addMissed(f.word, f.strikes)
 		}
 	}
 	s.fx.flyers = kept
@@ -213,15 +231,29 @@ func (s *GameScene) iconHalf(l gameLayout) float64 {
 	return listIconSize * l.zoom / 2
 }
 
-// addMissed inserts a word into the sorted miss list, skipping duplicates.
-func (s *GameScene) addMissed(word string) {
-	i := sort.SearchStrings(s.fx.missed, word)
-	if i < len(s.fx.missed) && s.fx.missed[i] == word {
+// addMissed inserts a word into the ordered miss list, skipping duplicates.
+// The order groups too-far words (one strike) above unknown ones (two strikes),
+// alphabetical within each group.
+func (s *GameScene) addMissed(word string, strikes int) {
+	m := missedWord{word: word, strikes: strikes}
+	i := sort.Search(len(s.fx.missed), func(i int) bool {
+		return !lessMissed(s.fx.missed[i], m)
+	})
+	if i < len(s.fx.missed) && s.fx.missed[i].word == word {
 		return
 	}
-	s.fx.missed = append(s.fx.missed, "")
+	s.fx.missed = append(s.fx.missed, missedWord{})
 	copy(s.fx.missed[i+1:], s.fx.missed[i:])
-	s.fx.missed[i] = word
+	s.fx.missed[i] = m
+}
+
+// lessMissed orders the miss list: fewer strikes first (too-far words above
+// unknown ones), then alphabetical inside each group.
+func lessMissed(a, b missedWord) bool {
+	if a.strikes != b.strikes {
+		return a.strikes < b.strikes
+	}
+	return a.word < b.word
 }
 
 // listFace is the font of the miss list.
@@ -234,8 +266,8 @@ func (s *GameScene) listWidth() float64 {
 	}
 	face := listFace()
 	maxW := 0.0
-	for _, w := range s.fx.missed {
-		for _, ln := range wrapWord(w) {
+	for _, m := range s.fx.missed {
+		for _, ln := range wrapWord(m.word) {
 			if lw, _ := text.Measure(ln, face, 0); lw > maxW {
 				maxW = lw
 			}
@@ -248,8 +280,8 @@ func (s *GameScene) listWidth() float64 {
 func (s *GameScene) listContentHeight() float64 {
 	lh := faceLineSpacing(listFace())
 	h := listPad
-	for _, w := range s.fx.missed {
-		h += float64(len(wrapWord(w)))*lh + listWordGap
+	for _, m := range s.fx.missed {
+		h += float64(len(wrapWord(m.word)))*lh + listWordGap
 	}
 	return h + listPad
 }
@@ -278,24 +310,38 @@ func (s *GameScene) drawExpandedList(screen *ebiten.Image, l gameLayout) {
 	lh := faceLineSpacing(face)
 	viewH := l.h - listButtonH // words stop above the button
 	y := listPad - s.fx.scroll
-	for _, word := range s.fx.missed {
-		for _, ln := range wrapWord(word) {
+	for _, m := range s.fx.missed {
+		for _, ln := range wrapWord(m.word) {
 			if y+lh >= 0 && y <= viewH {
 				op := &text.DrawOptions{}
 				op.GeoM.Translate(listPad, y)
 				op.ColorScale.ScaleWithColor(listTextColor)
 				op.Filter = ebiten.FilterLinear
 				text.Draw(screen, ln, face, op)
-				// Strike the line through its middle.
+				// Strike the line: once for a too-far word, twice for one that
+				// is not in the dictionary.
 				lw, _ := text.Measure(ln, face, 0)
-				my := y + lh*0.45
-				vector.StrokeLine(screen, fx(listPad), fx(my), fx(listPad+lw), fx(my), 1.5, listTextColor, true)
+				drawStrikeLines(screen, listPad, lw, y, lh, m.strikes)
 			}
 			y += lh
 		}
 		y += listWordGap
 	}
 	s.drawCollapseButton(screen, w, l.h)
+}
+
+// drawStrikeLines crosses out a word line: a single centered line, or two lines
+// spread around the middle for a word that was not in the dictionary. A missing
+// count (older entries) falls back to one line.
+func drawStrikeLines(screen *ebiten.Image, x, w, y, lh float64, strikes int) {
+	offsets := []float64{0.45}
+	if strikes >= 2 {
+		offsets = []float64{0.36, 0.56}
+	}
+	for _, f := range offsets {
+		my := y + lh*f
+		vector.StrokeLine(screen, fx(x), fx(my), fx(x+w), fx(my), 1.5, listTextColor, true)
+	}
 }
 
 // drawCollapseButton draws the bottom strip that folds the list into a sticker.
@@ -341,6 +387,11 @@ func (s *GameScene) handleListInput(g *Game) {
 		s.fx.captured = false
 	}
 	if len(s.fx.missed) == 0 {
+		return
+	}
+	// While the colors note holds an ongoing drag, stay out so releasing it over
+	// the list icon does not expand the list.
+	if s.colorsNote.captured {
 		return
 	}
 	mx, my := ebiten.CursorPosition()

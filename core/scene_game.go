@@ -46,6 +46,9 @@ type GameScene struct {
 	fx guessFX
 	// hints holds the hint cells so used-up ones can be removed (see hint.go).
 	hints hintUI
+	// colorsNote is the white sticker dropped on the sheet when the colors hint
+	// is bought (state and logic live in hint_colors_note.go).
+	colorsNote colorsNote
 }
 
 func newGameScene(graph *Graph, start *Node) *GameScene {
@@ -117,9 +120,10 @@ func (s *GameScene) Update(g *Game) error {
 		return nil
 	}
 
-	// The miss list gets first pick of the pointer (collapse button, sticker
-	// drag), then the graph handles panning and cloud dragging.
+	// The miss list gets first pick of the pointer (it draws on top), then the
+	// colors note, then the graph pans and drags clouds.
 	s.handleListInput(g)
+	s.updateColorsNote(g)
 	s.handleMouse(g)
 	// Scroll the miss list when the wheel turns over it, and let the clouds
 	// push the collapsed sticker out of their way.
@@ -184,7 +188,7 @@ func (s *GameScene) handleMouse(g *Game) {
 
 	// A fresh press: decide what it grabs (never over the hint cells or when
 	// the miss list already captured this press).
-	if input.UIHovered || s.fx.captured {
+	if input.UIHovered || s.fx.captured || s.colorsNote.captured {
 		return
 	}
 	pos := computeNodePositions(s.round, l)
@@ -209,8 +213,10 @@ func (s *GameScene) Draw(screen *ebiten.Image) {
 	drawGraphClouds(screen, s.round, l, pos, skip)
 	drawCloud(screen, s.round, l)
 
-	// Flying guesses on top of the graph, then the miss list sticky note.
+	// Flying guesses on top of the graph, then the colors note (the crossed-
+	// arrows sticker), then the miss list sticky note on top of it.
 	s.drawFlyers(screen, l, pos)
+	s.drawColorsNote(screen, l)
 	s.drawList(screen, l)
 
 	// The hint cells are the only ebitenui part of this scene.
