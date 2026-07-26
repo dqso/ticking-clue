@@ -18,6 +18,7 @@ const (
 	hintLengthCost = 30 * time.Second
 	hintLinkCost   = 15 * time.Second
 	hintColorsCost = 20 * time.Second
+	hintPosCost    = 10 * time.Second
 )
 
 // Hint cell sizes: the outer button and the baked icon+cost graphic inside it.
@@ -39,6 +40,9 @@ const (
 	// hintColorsKind colors every arrow by its relation type. One-time: its
 	// button disappears once bought.
 	hintColorsKind
+	// hintPosKind reveals which parts of speech the hidden word can be. One-time:
+	// its button disappears once bought, and it is available from the start.
+	hintPosKind
 	// hintLetterKind opens one random letter of the hidden word (every position
 	// of that letter). Its button appears only after hintLengthKind is used,
 	// and disappears once every letter has been opened.
@@ -52,22 +56,37 @@ var (
 	hintCellPressed = color.NRGBA{R: 0xd6, G: 0xd2, B: 0xe2, A: 0xff}
 )
 
-// useLengthHint reveals the length of the hidden word for a time cost.
-func (r *round) useLengthHint() {
+// useLengthHint reveals the length of the hidden word for a time cost and
+// returns the hint's name and cost for the Notes log (empty name = no-op).
+func (r *round) useLengthHint() (string, time.Duration) {
 	if r.state != roundPlaying || r.lengthShown {
-		return
+		return "", 0
 	}
 	r.lengthShown = true
 	r.applyDelta(-hintLengthCost)
+	return "word length", hintLengthCost
 }
 
-// useColorsHint colors every arrow by its relation type for a time cost.
-func (r *round) useColorsHint() {
+// useColorsHint colors every arrow by its relation type for a time cost and
+// returns the hint's name and cost for the Notes log.
+func (r *round) useColorsHint() (string, time.Duration) {
 	if r.state != roundPlaying || r.colorsShown {
-		return
+		return "", 0
 	}
 	r.colorsShown = true
 	r.applyDelta(-hintColorsCost)
+	return "arrow colors", hintColorsCost
+}
+
+// usePosHint reveals which parts of speech the hidden word can be for a time
+// cost and returns the first-person sentence and cost for the Notes log.
+func (r *round) usePosHint() (string, time.Duration) {
+	if r.state != roundPlaying || r.posShown {
+		return "", 0
+	}
+	r.posShown = true
+	r.applyDelta(-hintPosCost)
+	return posSentence(r.hidden), hintPosCost
 }
 
 // letterCounts returns how many distinct letters the hidden word has and how
@@ -123,11 +142,12 @@ func (r *round) letterHintCost() time.Duration {
 }
 
 // useLetterHint opens one random still-closed letter of the hidden word (all of
-// its positions at once) for the dynamic cost. It is only usable after the
-// length hint and while the half-word cap is not reached.
-func (r *round) useLetterHint() {
+// its positions at once) for the dynamic cost and returns the hint's name and
+// cost for the Notes log. It is only usable after the length hint and while the
+// half-word cap is not reached.
+func (r *round) useLetterHint() (string, time.Duration) {
 	if r.state != roundPlaying || !r.lengthShown || !r.canOpenLetter() {
-		return
+		return "", 0
 	}
 	seen := map[rune]bool{}
 	var candidates []rune
@@ -139,12 +159,13 @@ func (r *round) useLetterHint() {
 		candidates = append(candidates, ch)
 	}
 	if len(candidates) == 0 {
-		return
+		return "", 0
 	}
 	// Price the open before revealing (so "opened" excludes this letter).
 	cost := r.letterHintCost()
 	r.revealedLetters[candidates[rand.IntN(len(candidates))]] = true
 	r.applyDelta(-cost)
+	return "open a letter", cost
 }
 
 // hasUnrevealedLink reports whether at least one direct neighbor of the hidden
@@ -159,17 +180,29 @@ func (r *round) hasUnrevealedLink() bool {
 }
 
 // useLinkHint reveals one random not yet shown neighbor for a time cost and
-// returns it (so the scene can animate it). When every neighbor is already
-// shown it does nothing, costs nothing, and returns nil.
+// returns it (so the scene can animate it). Neighbors of the player's enabled
+// levels are offered first; only once they are all shown does it fall back to
+// neighbors of other levels. When every neighbor is already shown it does
+// nothing, costs nothing, and returns nil.
 func (r *round) useLinkHint() *Node {
 	if r.state != roundPlaying {
 		return nil
 	}
-	var candidates []*Node
+	var preferred, others []*Node
 	for _, n := range r.links {
-		if _, ok := r.revealedSet[n.ID]; !ok {
-			candidates = append(candidates, n)
+		if _, ok := r.revealedSet[n.ID]; ok {
+			continue
 		}
+		if r.levels[n.MaxLevel()] {
+			preferred = append(preferred, n)
+		} else {
+			others = append(others, n)
+		}
+	}
+	// Prefer enabled-level neighbors; use the rest only when those run out.
+	candidates := preferred
+	if len(candidates) == 0 {
+		candidates = others
 	}
 	if len(candidates) == 0 {
 		return nil
@@ -180,11 +213,45 @@ func (r *round) useLinkHint() *Node {
 	return pick
 }
 
-// hintUseLinkHint buys the "reveal a link" hint and flies the new cloud out
-// from the center to its place.
+// hintUseLength, hintUseLetter, hintUseColors and hintUsePos buy their hint and
+// record it in the Notes log, stamped with the timecode as it was before the
+// cost was paid.
+func (s *GameScene) hintUseLength() {
+	t := s.round.remaining
+	name, cost := s.round.useLengthHint()
+	s.logHint(t, name, cost)
+}
+
+func (s *GameScene) hintUseLetter() {
+	t := s.round.remaining
+	name, cost := s.round.useLetterHint()
+	s.logHint(t, name, cost)
+}
+
+func (s *GameScene) hintUseColors() {
+	t := s.round.remaining
+	name, cost := s.round.useColorsHint()
+	s.logHint(t, name, cost)
+}
+
+// hintUsePos buys the parts-of-speech hint and logs the parts it revealed with
+// the cost, so the Notes actually show the answer (not just the hint name).
+func (s *GameScene) hintUsePos() {
+	t := s.round.remaining
+	text, cost := s.round.usePosHint()
+	if text == "" {
+		return
+	}
+	s.logNote(t, text+" "+signedSeconds(-cost))
+}
+
+// hintUseLinkHint buys the "reveal a link" hint, flies the new cloud out from
+// the center to its place, and logs it.
 func (s *GameScene) hintUseLinkHint() {
+	t := s.round.remaining
 	if node := s.round.useLinkHint(); node != nil {
 		s.startFlyer(guessOutcome{kind: guessReward, word: node.Word, node: node}, true)
+		s.logHint(t, "linked word", hintLinkCost)
 	}
 }
 
@@ -222,10 +289,11 @@ func (s *GameScene) hintColumn() *widget.Container {
 	)
 	letterCost := s.round.letterHintCost()
 	letterGraphic := makeHintCellGraphic(hintLetterKind, letterCost)
-	length := newHintCell(makeHintCellGraphic(hintLengthKind, hintLengthCost), s.round.useLengthHint)
-	letter := newHintCell(letterGraphic, s.round.useLetterHint)
+	length := newHintCell(makeHintCellGraphic(hintLengthKind, hintLengthCost), s.hintUseLength)
+	letter := newHintCell(letterGraphic, s.hintUseLetter)
 	link := newHintCell(makeHintCellGraphic(hintLinkKind, hintLinkCost), s.hintUseLinkHint)
-	colors := newHintCell(makeHintCellGraphic(hintColorsKind, hintColorsCost), s.round.useColorsHint)
+	colors := newHintCell(makeHintCellGraphic(hintColorsKind, hintColorsCost), s.hintUseColors)
+	pos := newHintCell(makeHintCellGraphic(hintPosKind, hintPosCost), s.hintUsePos)
 	s.hints = hintUI{
 		column:        column,
 		letterGraphic: letterGraphic,
@@ -238,6 +306,8 @@ func (s *GameScene) hintColumn() *widget.Container {
 			{widget: letter, available: func() bool { return s.round.lengthShown && s.round.canOpenLetter() }},
 			{widget: link, available: s.round.hasUnrevealedLink},
 			{widget: colors, available: func() bool { return !s.round.colorsShown }},
+			// Available from the start; goes away once bought.
+			{widget: pos, available: func() bool { return !s.round.posShown }},
 		},
 	}
 	s.refreshHints() // add the cells that are available from the start
@@ -313,6 +383,8 @@ func drawHintCellGraphic(img *ebiten.Image, kind hintKind, cost time.Duration) {
 		drawLinkIcon(img)
 	case hintColorsKind:
 		drawColorsIcon(img)
+	case hintPosKind:
+		drawPosIcon(img)
 	}
 	drawTextCentered(img, "-"+formatMMSS(cost), newFace(16),
 		float64(hintCellInner)/2, float64(hintCellInner)-13, hintCostColor)
@@ -349,6 +421,13 @@ func drawLinkIcon(dst *ebiten.Image) {
 	cx, cy := float64(hintCellInner)/2+12, 30.0
 	drawCloudShape(dst, cx, cy, 20, 12, 4, 101)
 	drawArrow(dst, 12, cy+14, cx-4, cy+2, arrowColor, 1)
+}
+
+// drawPosIcon draws the two-line label "verb or / ...", standing for the
+// "which parts of speech" hint.
+func drawPosIcon(dst *ebiten.Image) {
+	drawCenteredLines(dst, []string{"verb or", "..."}, newFace(16),
+		float64(hintCellInner)/2, 30, hintIconColor)
 }
 
 // drawColorsIcon draws two arrows (green and red) leaving one point at the

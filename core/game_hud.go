@@ -48,9 +48,13 @@ func drawGuess(screen *ebiten.Image, r *round, l gameLayout) {
 	reserveW, timerH := text.Measure("00:00", timerFace, 0)
 	rightEdge := l.w - rightPad - reserveW - gap
 
-	// Prompt while empty (no caret), the typed word plus caret once typing.
+	// Prompt while empty (no caret), the typed word plus caret once typing. Once
+	// the round is over, the same line tells the player how to leave.
 	content, face, clr := r.guess+"|", newFace(26), guessColor
-	if r.guess == "" {
+	switch {
+	case r.state != roundPlaying:
+		content, face, clr = "Press Esc to return to the menu", newFace(18), promptColor
+	case r.guess == "":
 		content, face, clr = "Use the keyboard to guess the word", newFace(18), promptColor
 	}
 	cw, ch := text.Measure(content, face, 0)

@@ -87,7 +87,7 @@ type guessFX struct {
 // goes to the round and flies to its place or into the miss list.
 func (s *GameScene) submitGuess() {
 	word := strings.TrimSpace(strings.ToLower(s.round.guess))
-	if word != "" && word != s.round.hidden.Word && s.alreadyKnown(word) {
+	if word != "" && !sameWord(word, s.round.hidden.Word) && s.alreadyKnown(word) {
 		s.round.guess = ""
 		// A known word still un-masks its tokens, so typing a masked cloud's
 		// word reveals it instead of being declined for good.
@@ -98,7 +98,12 @@ func (s *GameScene) submitGuess() {
 		}
 		return
 	}
-	s.startFlyer(s.round.submit(), false)
+	// Capture the timecode before the guess changes the remaining time, then log
+	// the outcome and its time change.
+	before := s.round.remaining
+	out := s.round.submit()
+	s.logGuess(before, out, s.round.lastDelta)
+	s.startFlyer(out, false)
 }
 
 // alreadyKnown reports that the word is shown on the graph or already rejected,
@@ -127,9 +132,15 @@ func (s *GameScene) startFlyer(res guessOutcome, fromCenter bool) {
 		}
 		s.fx.missedSet[res.word] = true // known at once, even while flying
 	}
+	// Hint flyers (fromCenter) mask the hidden word's tokens, so size the flying
+	// cloud from the masked text too, matching how it is drawn and how it lands.
+	word := res.word
+	if fromCenter {
+		word = maskWord(res.word, s.round.hiddenTokens)
+	}
 	s.fx.flyers = append(s.fx.flyers, &flyGuess{
 		word:       res.word,
-		lines:      wrapWord(res.word),
+		lines:      wrapWord(word),
 		kind:       res.kind,
 		node:       res.node,
 		strikes:    res.strikes,
@@ -462,7 +473,7 @@ func (s *GameScene) resolveSticker(l gameLayout, pos []nodePos) {
 	for iter := 0; iter < 400; iter++ {
 		hit := circlesOverlap(cx, cy, r, l.cx, l.cy, centralR)
 		for i := 0; !hit && i < len(pos); i++ {
-			ri := l.linkSize(s.round.revealed[i].node.Word).hx
+			ri := l.linkSize(s.round.revealedWord(s.round.revealed[i])).hx
 			hit = circlesOverlap(cx, cy, r, pos[i].x, pos[i].y, ri)
 		}
 		if !hit {

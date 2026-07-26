@@ -47,23 +47,28 @@ func newMainMenuScene(graph *Graph) *MainMenuScene {
 	menu.AddChild(newMenuButton("New game", func() {
 		s.action = func(g *Game) error {
 			var start *Node
-			//start = g.graph.ByWord("count down")
+			start = g.graph.ByWord("cafe latté")
 
-			// The round starts from a random word with enough links
-			// to give the player several directions to explore.
+			// The round starts from a random word of an enabled level with
+			// enough links to give the player several directions to explore.
+			levels := g.settings.enabledLevels()
+			if start == nil {
+				start = g.graph.RandomLinkedLevels(minStartLinks, levels)
+			}
+			// Fall back to any level when the chosen ones have no such word.
 			if start == nil {
 				start = g.graph.RandomLinked(minStartLinks)
 			}
 			if start == nil {
 				return fmt.Errorf("graph has no word with more than %d links", minStartLinks)
 			}
-			g.Push(newGameScene(g.graph, start))
+			g.Push(newGameScene(g.graph, start, levels))
 			return nil
 		}
 	}))
 	menu.AddChild(newMenuButton("Options", func() {
 		s.action = func(g *Game) error {
-			g.Push(newOptionsScene(s.words))
+			g.Push(newOptionsScene(s.words, g.settings))
 			return nil
 		}
 	}))

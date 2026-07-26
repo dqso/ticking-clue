@@ -221,7 +221,7 @@ var colorsLegendRels = []struct {
 	{"mouse", "vole", pb.EdgeType_COORDINATE_TERM},
 	{"mouse", "rat", pb.EdgeType_COORDINATE_TERM},
 	{"rat", "vole", pb.EdgeType_COORDINATE_TERM},
-	{"house", "housekeeper", pb.EdgeType_DERIVED},
+	{"house", "housekeeper", pb.EdgeType_DERIVED_TO},
 	{"house", "techno", pb.EdgeType_RELATED},
 	{"bad", "dirty", pb.EdgeType_RELATED},
 }

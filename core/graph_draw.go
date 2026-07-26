@@ -44,7 +44,7 @@ func drawGraphArrows(screen *ebiten.Image, r *round, l gameLayout, pos []nodePos
 		if skip[rn.node.ID] {
 			continue
 		}
-		childSize := l.linkSize(rn.node.Word)
+		childSize := l.linkSize(r.revealedWord(rn))
 		var px, py float64
 		var pSize cloudSize
 		var pSeed int64
@@ -52,7 +52,7 @@ func drawGraphArrows(screen *ebiten.Image, r *round, l gameLayout, pos []nodePos
 			px, py, pSize, pSeed = l.cx, l.cy, centralSize, r.hidden.ID
 		} else {
 			px, py = pos[rn.parent].x, pos[rn.parent].y
-			pSize = l.linkSize(r.revealed[rn.parent].node.Word)
+			pSize = l.linkSize(r.revealedWord(r.revealed[rn.parent]))
 			pSeed = r.revealed[rn.parent].node.ID
 		}
 		dx, dy := pos[i].x-px, pos[i].y-py
@@ -99,7 +99,7 @@ func drawGraphClouds(screen *ebiten.Image, r *round, l gameLayout, pos []nodePos
 		if skip[rn.node.ID] {
 			continue
 		}
-		sz := l.linkSize(rn.node.Word)
+		sz := l.linkSize(r.revealedWord(rn))
 		drawCloudShape(screen, pos[i].x, pos[i].y, sz.hx, sz.hy, cloudStrokeWidth(sz.hy), rn.node.ID)
 		// Only hint-revealed clouds mask the hidden word; self-guessed ones show
 		// every token.

@@ -20,9 +20,60 @@ type Link struct {
 
 // Node is a lemma vertex with its outgoing links (adjacency list).
 type Node struct {
-	ID    int64
-	Word  string
-	Links []Link
+	ID   int64
+	Word string
+	// Attributes is a bitmask of pb.Attributes flags for this lemma.
+	Attributes uint64
+	Links      []Link
+}
+
+// reverseLink returns the inverse relation type of t, used to mirror a directed
+// edge on its target node. Symmetric relations (synonym, antonym, coordinate
+// term, related) map to themselves; the directional pairs swap: hypernym and
+// hyponym, holonym and meronym, derived-to and derived-from. ok is false for the
+// unspecified type, which is never mirrored.
+func reverseLink(t pb.EdgeType) (pb.EdgeType, bool) {
+	switch t {
+	case pb.EdgeType_HYPERNYM:
+		return pb.EdgeType_HYPONYM, true
+	case pb.EdgeType_HYPONYM:
+		return pb.EdgeType_HYPERNYM, true
+	case pb.EdgeType_HOLONYM:
+		return pb.EdgeType_MERONYM, true
+	case pb.EdgeType_MERONYM:
+		return pb.EdgeType_HOLONYM, true
+	case pb.EdgeType_DERIVED_TO:
+		return pb.EdgeType_DERIVED_FROM, true
+	case pb.EdgeType_DERIVED_FROM:
+		return pb.EdgeType_DERIVED_TO, true
+	case pb.EdgeType_SYNONYM, pb.EdgeType_ANTONYM, pb.EdgeType_COORDINATE_TERM, pb.EdgeType_RELATED:
+		return t, true
+	default:
+		return t, false
+	}
+}
+
+// linkExists reports whether n already has a link to `to` of type t, so a
+// mirrored edge is not added twice.
+func linkExists(n *Node, to *Node, t pb.EdgeType) bool {
+	for _, l := range n.Links {
+		if l.To == to && l.Type == t {
+			return true
+		}
+	}
+	return false
+}
+
+// MaxLevel returns the node's CEFR level. A node normally carries exactly one
+// LEVEL_* flag; if several are set the highest wins, and if none are set it
+// defaults to C2, matching the converter's rule for a missing level.
+func (n *Node) MaxLevel() Level {
+	for lvl := Level(levelCount - 1); lvl >= 0; lvl-- {
+		if n.Attributes&uint64(levelBits[lvl]) != 0 {
+			return lvl
+		}
+	}
+	return LevelC2
 }
 
 // Neighbors returns nodes connected by any of the given edge types.
@@ -103,11 +154,15 @@ func buildGraph(src *pb.Graph, report func(float64)) *Graph {
 	}
 	nodes := src.GetNodes()
 	for i, n := range nodes {
-		node := &Node{ID: n.GetId(), Word: n.GetWord()}
+		node := &Node{ID: n.GetId(), Word: n.GetWord(), Attributes: n.GetAttributes()}
 		g.byID[node.ID] = node
-		// On duplicate words the first node wins.
-		if _, ok := g.byWord[node.Word]; !ok && node.Word != "" {
-			g.byWord[node.Word] = node
+		// Key words by their keyboard-typeable form, so an accented lemma matches
+		// what the player can actually type; words with no typeable form are left
+		// out, and the first node wins on a collision.
+		if key, ok := foldWord(node.Word); ok && key != "" {
+			if _, exists := g.byWord[key]; !exists {
+				g.byWord[key] = node
+			}
 		}
 		if i%reportEvery == 0 {
 			// Nodes take the 0.5..0.7 part of the progress.
@@ -122,6 +177,12 @@ func buildGraph(src *pb.Graph, report func(float64)) *Graph {
 			continue
 		}
 		from.Links = append(from.Links, Link{Type: e.GetType(), To: to})
+		// Derivation is directional: add the inverse link on the target (with the
+		// swapped DERIVED_TO/DERIVED_FROM type) so the graph is navigable both ways,
+		// unless that reverse link already exists.
+		if rt, ok := reverseLink(e.GetType()); ok && !linkExists(to, from, rt) {
+			to.Links = append(to.Links, Link{Type: rt, To: from})
+		}
 		if i%reportEvery == 0 {
 			// Edges take the 0.7..1.0 part of the progress.
 			report(0.7 + 0.3*float64(i)/float64(len(edges)))
@@ -138,7 +199,11 @@ func (g *Graph) Node(id int64) *Node {
 
 // ByWord returns a node by its word or nil.
 func (g *Graph) ByWord(word string) *Node {
-	return g.byWord[word]
+	key, ok := foldWord(word)
+	if !ok {
+		return nil
+	}
+	return g.byWord[key]
 }
 
 // Len returns the number of nodes.
@@ -158,6 +223,24 @@ func (g *Graph) RandomLinked(min int) *Node {
 		}
 		// Each matching node replaces the result with probability 1/seen,
 		// which keeps the choice uniform without collecting a slice.
+		seen++
+		if rand.IntN(seen) == 0 {
+			res = n
+		}
+	}
+	return res
+}
+
+// RandomLinkedLevels is like RandomLinked but restricted to nodes whose CEFR
+// level is enabled in levels. It returns nil when no such node exists, so the
+// caller can fall back to a level-agnostic pick.
+func (g *Graph) RandomLinkedLevels(min int, levels [levelCount]bool) *Node {
+	var res *Node
+	seen := 0
+	for _, n := range g.byWord {
+		if len(n.Links) <= min || !levels[n.MaxLevel()] {
+			continue
+		}
 		seen++
 		if rand.IntN(seen) == 0 {
 			res = n

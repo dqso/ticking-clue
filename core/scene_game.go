@@ -49,12 +49,32 @@ type GameScene struct {
 	// colorsNote is the white sticker dropped on the sheet when the colors hint
 	// is bought (state and logic live in hint_colors_note.go).
 	colorsNote colorsNote
+	// textNote is the pink sticker a text hint drops on the sheet (the parts-of-
+	// speech hint today; state and logic live in hint_text_note.go).
+	textNote textNote
+	// winFX is the victory salute: paint splats piling up over the graph on a
+	// win (state and logic live in win_fx.go).
+	winFX winFX
+	// hintsHidden reports that the hint panel was removed after the win.
+	hintsHidden bool
 }
 
-func newGameScene(graph *Graph, start *Node) *GameScene {
+// hideHints removes the hint panel from the UI once the round is won.
+func (s *GameScene) hideHints() {
+	if s.hintsHidden {
+		return
+	}
+	s.ui.Container.RemoveChild(s.hints.column)
+	s.hintsHidden = true
+}
+
+func newGameScene(graph *Graph, start *Node, levels [levelCount]bool) *GameScene {
 	log.Printf("hidden word: %s", start.Word)
-	s := &GameScene{round: newRound(graph, start), dragCloud: -1, zoom: 1}
+	s := &GameScene{round: newRound(graph, start, levels), dragCloud: -1, zoom: 1}
 	s.ui = &ebitenui.UI{Container: s.buildHintUI()}
+	// Give the player a couple of free neighbor words and open the journal with
+	// them, so the map starts with a few directions to explore.
+	s.logStartNote(s.round.revealStartWords(2))
 	return s
 }
 
@@ -107,10 +127,24 @@ func repeatKey(k ebiten.Key) bool {
 
 func (s *GameScene) Update(g *Game) error {
 	s.ui.Update()
-	// Drop hint cells whose hint is used up (one-time hints, or all links shown).
-	s.refreshHints()
+
+	l := computeLayout(g.screenWidth, g.screenHeight, s.panX, s.panY, s.zoom)
 
 	if s.round.state != roundPlaying {
+		// On a win, drop the hint panel and play the paint salute over the graph;
+		// the player can still pan the field and use every sticker.
+		if s.round.state == roundWon {
+			s.hideHints()
+			if !s.winFX.active && !s.winFX.done {
+				s.winFX.start()
+			}
+			s.winFX.update(l)
+			s.handleField(g, l)
+			// Once the paint has faded, slide the notes next to the guessed word.
+			if s.winFX.done {
+				s.moveNotesToWord(l)
+			}
+		}
 		// Round is over: Enter or Escape returns to the main menu.
 		if inpututil.IsKeyJustPressed(ebiten.KeyEnter) ||
 			inpututil.IsKeyJustPressed(ebiten.KeyNumpadEnter) ||
@@ -120,18 +154,9 @@ func (s *GameScene) Update(g *Game) error {
 		return nil
 	}
 
-	// The miss list gets first pick of the pointer (it draws on top), then the
-	// colors note, then the graph pans and drags clouds.
-	s.handleListInput(g)
-	s.updateColorsNote(g)
-	s.handleMouse(g)
-	// Scroll the miss list when the wheel turns over it, and let the clouds
-	// push the collapsed sticker out of their way.
-	l := computeLayout(g.screenWidth, g.screenHeight, s.panX, s.panY, s.zoom)
-	s.updateListScroll(l)
-	s.resolveSticker(l, computeNodePositions(s.round, l))
-	// Advance the flying guesses.
-	s.updateFlyers()
+	// Drop hint cells whose hint is used up (one-time hints, or all links shown).
+	s.refreshHints()
+	s.handleField(g, l)
 
 	// Typing builds the current guess.
 	for _, ch := range ebiten.AppendInputChars(nil) {
@@ -156,6 +181,21 @@ func (s *GameScene) Update(g *Game) error {
 
 	s.round.update()
 	return nil
+}
+
+// handleField drives the sticker and graph interaction shared by the playing
+// and the won round: the miss list gets first pick of the pointer (it draws on
+// top), then the colors note and the Notes sticker, then the graph pans and
+// drags clouds, and finally the wheel scrolls and the clouds push the sticker.
+func (s *GameScene) handleField(g *Game, l gameLayout) {
+	s.handleListInput(g)
+	s.updateColorsNote(g)
+	s.updateTextNote(g)
+	s.handleMouse(g)
+	s.updateListScroll(l)
+	s.updateTextNoteScroll(l)
+	s.resolveSticker(l, computeNodePositions(s.round, l))
+	s.updateFlyers()
 }
 
 // handleMouse handles left-button dragging: grabbing a cloud moves that cloud,
@@ -188,7 +228,7 @@ func (s *GameScene) handleMouse(g *Game) {
 
 	// A fresh press: decide what it grabs (never over the hint cells or when
 	// the miss list already captured this press).
-	if input.UIHovered || s.fx.captured || s.colorsNote.captured {
+	if input.UIHovered || s.fx.captured || s.colorsNote.captured || s.textNote.captured {
 		return
 	}
 	pos := computeNodePositions(s.round, l)
@@ -217,6 +257,7 @@ func (s *GameScene) Draw(screen *ebiten.Image) {
 	// arrows sticker), then the miss list sticky note on top of it.
 	s.drawFlyers(screen, l, pos)
 	s.drawColorsNote(screen, l)
+	s.drawTextNote(screen, l)
 	s.drawList(screen, l)
 
 	// The hint cells are the only ebitenui part of this scene.
@@ -225,7 +266,10 @@ func (s *GameScene) Draw(screen *ebiten.Image) {
 	// HUD text on top of everything.
 	drawTimer(screen, s.round, l)
 	drawGuess(screen, s.round, l)
-	if s.round.state != roundPlaying {
+	// A win rains paint over the graph; a loss dims it with the end overlay.
+	if s.round.state == roundWon {
+		s.winFX.draw(screen, l)
+	} else if s.round.state == roundLost {
 		drawEndOverlay(screen, s.round, l)
 	}
 }

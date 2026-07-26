@@ -2,6 +2,7 @@ package core
 
 import (
 	"math"
+	"math/rand/v2"
 	"sort"
 	"strings"
 	"time"
@@ -89,6 +90,10 @@ type round struct {
 	graph  *Graph
 	hidden *Node
 
+	// levels are the CEFR levels the player enabled. Link hints prefer neighbors
+	// of these levels and only fall back to others once they run out.
+	levels [levelCount]bool
+
 	// links are the direct neighbors of the hidden word (deduplicated, with
 	// a non-empty word). They are the pool for the "reveal a link" hint.
 	links []*Node
@@ -109,6 +114,8 @@ type round struct {
 	lengthShown bool
 	// colorsShown reports that the arrow-color hint was bought.
 	colorsShown bool
+	// posShown reports that the parts-of-speech hint was bought.
+	posShown bool
 	// revealedLetters are the letters opened by the "reveal a letter" hint;
 	// every position of such a letter is shown instead of a box.
 	revealedLetters map[rune]bool
@@ -127,10 +134,11 @@ type round struct {
 	flash      time.Duration
 }
 
-func newRound(graph *Graph, hidden *Node) *round {
+func newRound(graph *Graph, hidden *Node, levels [levelCount]bool) *round {
 	r := &round{
 		graph:           graph,
 		hidden:          hidden,
+		levels:          levels,
 		remaining:       roundDuration,
 		revealedSet:     make(map[int64]int),
 		rayAngle:        make(map[int64]float64),
@@ -158,6 +166,33 @@ func directNeighbors(n *Node) []*Node {
 		res = append(res, to)
 	}
 	return res
+}
+
+// revealStartWords reveals up to n random neighbors of the hidden word for free
+// at the start of the round and returns them, so the opening Notes entry can
+// list them. Neighbors of the player's enabled levels are picked first.
+func (r *round) revealStartWords(n int) []*Node {
+	var preferred, others []*Node
+	for _, nb := range r.links {
+		if _, ok := r.revealedSet[nb.ID]; ok {
+			continue
+		}
+		if r.levels[nb.MaxLevel()] {
+			preferred = append(preferred, nb)
+		} else {
+			others = append(others, nb)
+		}
+	}
+	rand.Shuffle(len(preferred), func(i, j int) { preferred[i], preferred[j] = preferred[j], preferred[i] })
+	rand.Shuffle(len(others), func(i, j int) { others[i], others[j] = others[j], others[i] })
+	pool := append(preferred, others...)
+	if len(pool) > n {
+		pool = pool[:n]
+	}
+	for _, nb := range pool {
+		r.revealPath([]*Node{r.hidden, nb}, true)
+	}
+	return pool
 }
 
 // tickDuration is the real time one Update tick stands for. Counting ticks
@@ -233,7 +268,7 @@ func (r *round) submit() guessOutcome {
 	}
 	// Tokens the player types are no longer masked in hint clouds.
 	r.unmaskTokens(word)
-	if word == r.hidden.Word {
+	if sameWord(word, r.hidden.Word) {
 		r.state = roundWon
 		r.setFeedback(guessWin, "correct!", 0)
 		return guessOutcome{kind: guessWin, word: word}
@@ -269,12 +304,23 @@ func (r *round) miss(reason string) {
 func (r *round) unmaskTokens(word string) bool {
 	unmasked := false
 	for _, tok := range strings.FieldsFunc(word, isTokenSep) {
+		tok = strings.ToLower(tok)
 		if _, masked := r.hiddenTokens[tok]; masked {
 			delete(r.hiddenTokens, tok)
 			unmasked = true
 		}
 	}
 	return unmasked
+}
+
+// revealedWord is the text shown for a revealed node, used for both sizing and
+// drawing so the cloud always fits: hint clouds mask the hidden word's tokens
+// (turning them into "<?>"), self-guessed ones show the word unchanged.
+func (r *round) revealedWord(rn revealedNode) string {
+	if rn.byHint {
+		return maskWord(rn.node.Word, r.hiddenTokens)
+	}
+	return rn.node.Word
 }
 
 // rewardForDistance returns the time gained for a word at graph distance d.

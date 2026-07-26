@@ -50,6 +50,14 @@ var (
 	// holds the arrow legend.
 	colorsNoteColor = color.NRGBA{R: 0xfb, G: 0xfb, B: 0xf9, A: 0xff}
 	colorsNoteEdge  = color.NRGBA{R: 0xcc, G: 0xc9, B: 0xd2, A: 0xff}
+
+	// Text note: a light pink sticky note dropped on the sheet by a text hint
+	// (the parts-of-speech hint today, any hint text in the future). Collapsed it
+	// shows a small label; expanded it holds the hint sentence.
+	textNoteColor = color.NRGBA{R: 0xfc, G: 0xdd, B: 0xe6, A: 0xff}
+	textNoteEdge  = color.NRGBA{R: 0xe4, G: 0xa8, B: 0xbe, A: 0xff}
+	textNoteText  = color.NRGBA{R: 0x5a, G: 0x28, B: 0x3a, A: 0xff}
+	textNoteTime  = color.NRGBA{R: 0xb0, G: 0x6a, B: 0x82, A: 0xff} // muted timecode
 )
 
 // edgeColor maps a relation type to its arrow color. Hypernym and hyponym share
@@ -67,7 +75,7 @@ func edgeColor(t pb.EdgeType) color.NRGBA {
 		return meronymyColor
 	case pb.EdgeType_COORDINATE_TERM:
 		return coordColor
-	case pb.EdgeType_DERIVED:
+	case pb.EdgeType_DERIVED_TO, pb.EdgeType_DERIVED_FROM:
 		return derivedColor
 	default:
 		return arrowColor
@@ -88,7 +96,7 @@ func edgeName(t pb.EdgeType) string {
 		return "meronymy"
 	case pb.EdgeType_COORDINATE_TERM:
 		return "coordinate term"
-	case pb.EdgeType_DERIVED:
+	case pb.EdgeType_DERIVED_TO, pb.EdgeType_DERIVED_FROM:
 		return "derived"
 	default:
 		return "related"

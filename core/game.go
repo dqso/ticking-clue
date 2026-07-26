@@ -9,6 +9,8 @@ type Game struct {
 	debug        debugOverlay
 	// graph is the lemma graph, loaded by LoadingScene.
 	graph *Graph
+	// settings holds the in-session player options (e.g. enabled levels).
+	settings *Settings
 }
 
 func NewGame(debug bool, version string, screenWidth, screenHeight int) *Game {
@@ -17,6 +19,7 @@ func NewGame(debug bool, version string, screenWidth, screenHeight int) *Game {
 		screenHeight: screenHeight,
 		scenes:       SceneManager{},
 		debug:        newDebugOverlay(debug, version),
+		settings:     newSettings(),
 	}
 	g.scenes.Push(newLoadingScene())
 	return g

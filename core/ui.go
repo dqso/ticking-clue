@@ -13,6 +13,8 @@ var (
 	uiButtonIdleColor    = color.NRGBA{R: 0x3a, G: 0x3a, B: 0x50, A: 0xff}
 	uiButtonHoverColor   = color.NRGBA{R: 0x4d, G: 0x4d, B: 0x6a, A: 0xff}
 	uiButtonPressedColor = color.NRGBA{R: 0x2b, G: 0x2b, B: 0x3d, A: 0xff}
+	// uiButtonCheckedColor marks a toggled-on button (e.g. an enabled level).
+	uiButtonCheckedColor = color.NRGBA{R: 0x2f, G: 0x9e, B: 0x54, A: 0xff} // green
 	uiTextColor          = color.NRGBA{R: 0xf0, G: 0xf0, B: 0xf0, A: 0xff}
 	uiPanelColor         = color.NRGBA{R: 0x20, G: 0x20, B: 0x2e, A: 0xff}
 	uiOverlayColor       = color.NRGBA{A: 0xa0}

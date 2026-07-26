@@ -430,6 +430,7 @@ func isTokenSep(r rune) bool { return r == ' ' || r == '-' }
 func significantTokens(word string) map[string]struct{} {
 	res := map[string]struct{}{}
 	for _, tok := range strings.FieldsFunc(word, isTokenSep) {
+		tok = strings.ToLower(tok)
 		if _, stop := hiddenStopwords[tok]; !stop {
 			res[tok] = struct{}{}
 		}
@@ -464,7 +465,7 @@ func tokenizeLine(line string) []lineToken {
 func maskWord(word string, mask map[string]struct{}) string {
 	var b strings.Builder
 	for _, tk := range tokenizeLine(word) {
-		if _, masked := mask[tk.text]; masked {
+		if _, masked := mask[strings.ToLower(tk.text)]; masked {
 			b.WriteString("<?>")
 		} else {
 			b.WriteString(tk.text)

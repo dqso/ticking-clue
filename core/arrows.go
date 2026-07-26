@@ -39,8 +39,10 @@ func drawRelationArrow(dst *ebiten.Image, x0, y0, x1, y1 float64, edge pb.EdgeTy
 		drawCupArrow(dst, x0, y0, x1, y1, clr, w, true, true)
 	case pb.EdgeType_MERONYM:
 		drawCupArrow(dst, x0, y0, x1, y1, clr, w, true, false)
-	case pb.EdgeType_DERIVED:
-		drawTickArrow(dst, x0, y0, x1, y1, clr, w)
+	case pb.EdgeType_DERIVED_TO:
+		drawTickArrow(dst, x0, y0, x1, y1, clr, w, true)
+	case pb.EdgeType_DERIVED_FROM:
+		drawTickArrow(dst, x0, y0, x1, y1, clr, w, false)
 	default:
 		drawArrow(dst, x0, y0, x1, y1, clr, w)
 	}
@@ -158,9 +160,10 @@ func drawSquareCup(dst *ebiten.Image, cx, cy, odx, ody, r float64, clr color.Col
 	vector.StrokeLine(dst, fx(b2x-qx*g), fx(b2y-qy*g), fx(t2x-qx*g), fx(t2y-qy*g), sw, clr, true)
 }
 
-// drawTickArrow draws a full shaft plus a short cross tick near the child end,
-// marking a derived word.
-func drawTickArrow(dst *ebiten.Image, x0, y0, x1, y1 float64, clr color.Color, w float64) {
+// drawTickArrow draws a full shaft plus a short cross tick near the derived
+// word, marking a derivation. The tick sits at the target end when toEnd is
+// true (DERIVED_TO) or at the source end when false (DERIVED_FROM).
+func drawTickArrow(dst *ebiten.Image, x0, y0, x1, y1 float64, clr color.Color, w float64, toEnd bool) {
 	ux, uy, length, ok := lineDir(x0, y0, x1, y1)
 	if !ok {
 		return
@@ -169,6 +172,9 @@ func drawTickArrow(dst *ebiten.Image, x0, y0, x1, y1 float64, clr color.Color, w
 	r := markerRadius(w)
 	back := math.Min(r, length*0.5)
 	tx, ty := x1-ux*back, y1-uy*back
+	if !toEnd {
+		tx, ty = x0+ux*back, y0+uy*back
+	}
 	qx, qy := -uy, ux
 	vector.StrokeLine(dst, fx(tx+qx*r), fx(ty+qy*r), fx(tx-qx*r), fx(ty-qy*r), fx(2*w), clr, true)
 }

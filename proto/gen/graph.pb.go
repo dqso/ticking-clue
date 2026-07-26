@@ -21,13 +21,123 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Attributes are single-bit flags OR-ed into Node.attributes: the parts of
+// speech a Lemma can be (POS_*, from its neo4j "pos" values) and its CEFR
+// level (LEVEL_*, from its "level" value; missing means C2).
+type Attributes int32
+
+const (
+	Attributes_ATTRIBUTES_UNSPECIFIED   Attributes = 0
+	Attributes_POS_ADJECTIVE            Attributes = 1
+	Attributes_POS_ADVERB               Attributes = 2
+	Attributes_POS_CONJUNCTION          Attributes = 4
+	Attributes_POS_CONTRACTION          Attributes = 8
+	Attributes_POS_DETERMINER           Attributes = 16
+	Attributes_POS_INTERJECTION         Attributes = 32
+	Attributes_POS_NAME                 Attributes = 64
+	Attributes_POS_NOUN                 Attributes = 128
+	Attributes_POS_NUMBER               Attributes = 256
+	Attributes_POS_PARTICLE             Attributes = 512
+	Attributes_POS_PHRASE               Attributes = 1024
+	Attributes_POS_PREPOSITION          Attributes = 2048
+	Attributes_POS_PREPOSITIONAL_PHRASE Attributes = 4096
+	Attributes_POS_PRONOUN              Attributes = 8192
+	Attributes_POS_PROVERB              Attributes = 16384
+	Attributes_POS_VERB                 Attributes = 32768
+	Attributes_LEVEL_A1                 Attributes = 65536
+	Attributes_LEVEL_A2                 Attributes = 131072
+	Attributes_LEVEL_B1                 Attributes = 262144
+	Attributes_LEVEL_B2                 Attributes = 524288
+	Attributes_LEVEL_C1                 Attributes = 1048576
+	Attributes_LEVEL_C2                 Attributes = 2097152
+)
+
+// Enum value maps for Attributes.
+var (
+	Attributes_name = map[int32]string{
+		0:       "ATTRIBUTES_UNSPECIFIED",
+		1:       "POS_ADJECTIVE",
+		2:       "POS_ADVERB",
+		4:       "POS_CONJUNCTION",
+		8:       "POS_CONTRACTION",
+		16:      "POS_DETERMINER",
+		32:      "POS_INTERJECTION",
+		64:      "POS_NAME",
+		128:     "POS_NOUN",
+		256:     "POS_NUMBER",
+		512:     "POS_PARTICLE",
+		1024:    "POS_PHRASE",
+		2048:    "POS_PREPOSITION",
+		4096:    "POS_PREPOSITIONAL_PHRASE",
+		8192:    "POS_PRONOUN",
+		16384:   "POS_PROVERB",
+		32768:   "POS_VERB",
+		65536:   "LEVEL_A1",
+		131072:  "LEVEL_A2",
+		262144:  "LEVEL_B1",
+		524288:  "LEVEL_B2",
+		1048576: "LEVEL_C1",
+		2097152: "LEVEL_C2",
+	}
+	Attributes_value = map[string]int32{
+		"ATTRIBUTES_UNSPECIFIED":   0,
+		"POS_ADJECTIVE":            1,
+		"POS_ADVERB":               2,
+		"POS_CONJUNCTION":          4,
+		"POS_CONTRACTION":          8,
+		"POS_DETERMINER":           16,
+		"POS_INTERJECTION":         32,
+		"POS_NAME":                 64,
+		"POS_NOUN":                 128,
+		"POS_NUMBER":               256,
+		"POS_PARTICLE":             512,
+		"POS_PHRASE":               1024,
+		"POS_PREPOSITION":          2048,
+		"POS_PREPOSITIONAL_PHRASE": 4096,
+		"POS_PRONOUN":              8192,
+		"POS_PROVERB":              16384,
+		"POS_VERB":                 32768,
+		"LEVEL_A1":                 65536,
+		"LEVEL_A2":                 131072,
+		"LEVEL_B1":                 262144,
+		"LEVEL_B2":                 524288,
+		"LEVEL_C1":                 1048576,
+		"LEVEL_C2":                 2097152,
+	}
+)
+
+func (x Attributes) Enum() *Attributes {
+	p := new(Attributes)
+	*p = x
+	return p
+}
+
+func (x Attributes) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (Attributes) Descriptor() protoreflect.EnumDescriptor {
+	return file_graph_proto_enumTypes[0].Descriptor()
+}
+
+func (Attributes) Type() protoreflect.EnumType {
+	return &file_graph_proto_enumTypes[0]
+}
+
+func (x Attributes) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use Attributes.Descriptor instead.
+func (Attributes) EnumDescriptor() ([]byte, []int) {
+	return file_graph_proto_rawDescGZIP(), []int{0}
+}
+
 // EdgeType mirrors the "type" property of LINK relationships in neo4j.
 type EdgeType int32
 
 const (
 	EdgeType_EDGE_TYPE_UNSPECIFIED EdgeType = 0
-	EdgeType_HAS_READING           EdgeType = 1
-	EdgeType_HAS_SENSE             EdgeType = 2
 	EdgeType_SYNONYM               EdgeType = 3
 	EdgeType_ANTONYM               EdgeType = 4
 	EdgeType_HYPERNYM              EdgeType = 5
@@ -35,16 +145,15 @@ const (
 	EdgeType_HOLONYM               EdgeType = 7
 	EdgeType_MERONYM               EdgeType = 8
 	EdgeType_COORDINATE_TERM       EdgeType = 9
-	EdgeType_DERIVED               EdgeType = 10
+	EdgeType_DERIVED_TO            EdgeType = 10
 	EdgeType_RELATED               EdgeType = 11
+	EdgeType_DERIVED_FROM          EdgeType = 12
 )
 
 // Enum value maps for EdgeType.
 var (
 	EdgeType_name = map[int32]string{
 		0:  "EDGE_TYPE_UNSPECIFIED",
-		1:  "HAS_READING",
-		2:  "HAS_SENSE",
 		3:  "SYNONYM",
 		4:  "ANTONYM",
 		5:  "HYPERNYM",
@@ -52,13 +161,12 @@ var (
 		7:  "HOLONYM",
 		8:  "MERONYM",
 		9:  "COORDINATE_TERM",
-		10: "DERIVED",
+		10: "DERIVED_TO",
 		11: "RELATED",
+		12: "DERIVED_FROM",
 	}
 	EdgeType_value = map[string]int32{
 		"EDGE_TYPE_UNSPECIFIED": 0,
-		"HAS_READING":           1,
-		"HAS_SENSE":             2,
 		"SYNONYM":               3,
 		"ANTONYM":               4,
 		"HYPERNYM":              5,
@@ -66,8 +174,9 @@ var (
 		"HOLONYM":               7,
 		"MERONYM":               8,
 		"COORDINATE_TERM":       9,
-		"DERIVED":               10,
+		"DERIVED_TO":            10,
 		"RELATED":               11,
+		"DERIVED_FROM":          12,
 	}
 )
 
@@ -82,11 +191,11 @@ func (x EdgeType) String() string {
 }
 
 func (EdgeType) Descriptor() protoreflect.EnumDescriptor {
-	return file_graph_proto_enumTypes[0].Descriptor()
+	return file_graph_proto_enumTypes[1].Descriptor()
 }
 
 func (EdgeType) Type() protoreflect.EnumType {
-	return &file_graph_proto_enumTypes[0]
+	return &file_graph_proto_enumTypes[1]
 }
 
 func (x EdgeType) Number() protoreflect.EnumNumber {
@@ -95,7 +204,7 @@ func (x EdgeType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use EdgeType.Descriptor instead.
 func (EdgeType) EnumDescriptor() ([]byte, []int) {
-	return file_graph_proto_rawDescGZIP(), []int{0}
+	return file_graph_proto_rawDescGZIP(), []int{1}
 }
 
 // Graph is a compact binary form of the lemma graph
@@ -154,9 +263,11 @@ func (x *Graph) GetEdges() []*Edge {
 
 // Node is a lemma vertex.
 type Node struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
-	Word          string                 `protobuf:"bytes,2,opt,name=word,proto3" json:"word,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    int64                  `protobuf:"varint,1,opt,name=id,proto3" json:"id,omitempty"`
+	Word  string                 `protobuf:"bytes,2,opt,name=word,proto3" json:"word,omitempty"`
+	// attributes is a bitmask of Attributes flags for this lemma.
+	Attributes    uint64 `protobuf:"varint,3,opt,name=attributes,proto3" json:"attributes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -203,6 +314,13 @@ func (x *Node) GetWord() string {
 		return x.Word
 	}
 	return ""
+}
+
+func (x *Node) GetAttributes() uint64 {
+	if x != nil {
+		return x.Attributes
+	}
+	return 0
 }
 
 // Edge is a directed link between two nodes.
@@ -281,29 +399,60 @@ const file_graph_proto_rawDesc = "" +
 	"\vgraph.proto\x12\x05graph\"M\n" +
 	"\x05Graph\x12!\n" +
 	"\x05nodes\x18\x01 \x03(\v2\v.graph.NodeR\x05nodes\x12!\n" +
-	"\x05edges\x18\x02 \x03(\v2\v.graph.EdgeR\x05edges\"*\n" +
+	"\x05edges\x18\x02 \x03(\v2\v.graph.EdgeR\x05edges\"J\n" +
 	"\x04Node\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x12\n" +
-	"\x04word\x18\x02 \x01(\tR\x04word\"_\n" +
+	"\x04word\x18\x02 \x01(\tR\x04word\x12\x1e\n" +
+	"\n" +
+	"attributes\x18\x03 \x01(\x04R\n" +
+	"attributes\"_\n" +
 	"\x04Edge\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12#\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x0f.graph.EdgeTypeR\x04type\x12\x12\n" +
 	"\x04from\x18\x03 \x01(\x03R\x04from\x12\x0e\n" +
-	"\x02to\x18\x04 \x01(\x03R\x02to*\xc3\x01\n" +
+	"\x02to\x18\x04 \x01(\x03R\x02to*\xbc\x03\n" +
+	"\n" +
+	"Attributes\x12\x1a\n" +
+	"\x16ATTRIBUTES_UNSPECIFIED\x10\x00\x12\x11\n" +
+	"\rPOS_ADJECTIVE\x10\x01\x12\x0e\n" +
+	"\n" +
+	"POS_ADVERB\x10\x02\x12\x13\n" +
+	"\x0fPOS_CONJUNCTION\x10\x04\x12\x13\n" +
+	"\x0fPOS_CONTRACTION\x10\b\x12\x12\n" +
+	"\x0ePOS_DETERMINER\x10\x10\x12\x14\n" +
+	"\x10POS_INTERJECTION\x10 \x12\f\n" +
+	"\bPOS_NAME\x10@\x12\r\n" +
+	"\bPOS_NOUN\x10\x80\x01\x12\x0f\n" +
+	"\n" +
+	"POS_NUMBER\x10\x80\x02\x12\x11\n" +
+	"\fPOS_PARTICLE\x10\x80\x04\x12\x0f\n" +
+	"\n" +
+	"POS_PHRASE\x10\x80\b\x12\x14\n" +
+	"\x0fPOS_PREPOSITION\x10\x80\x10\x12\x1d\n" +
+	"\x18POS_PREPOSITIONAL_PHRASE\x10\x80 \x12\x10\n" +
+	"\vPOS_PRONOUN\x10\x80@\x12\x11\n" +
+	"\vPOS_PROVERB\x10\x80\x80\x01\x12\x0e\n" +
+	"\bPOS_VERB\x10\x80\x80\x02\x12\x0e\n" +
+	"\bLEVEL_A1\x10\x80\x80\x04\x12\x0e\n" +
+	"\bLEVEL_A2\x10\x80\x80\b\x12\x0e\n" +
+	"\bLEVEL_B1\x10\x80\x80\x10\x12\x0e\n" +
+	"\bLEVEL_B2\x10\x80\x80 \x12\x0e\n" +
+	"\bLEVEL_C1\x10\x80\x80@\x12\x0f\n" +
+	"\bLEVEL_C2\x10\x80\x80\x80\x01*\xdc\x01\n" +
 	"\bEdgeType\x12\x19\n" +
-	"\x15EDGE_TYPE_UNSPECIFIED\x10\x00\x12\x0f\n" +
-	"\vHAS_READING\x10\x01\x12\r\n" +
-	"\tHAS_SENSE\x10\x02\x12\v\n" +
+	"\x15EDGE_TYPE_UNSPECIFIED\x10\x00\x12\v\n" +
 	"\aSYNONYM\x10\x03\x12\v\n" +
 	"\aANTONYM\x10\x04\x12\f\n" +
 	"\bHYPERNYM\x10\x05\x12\v\n" +
 	"\aHYPONYM\x10\x06\x12\v\n" +
 	"\aHOLONYM\x10\a\x12\v\n" +
 	"\aMERONYM\x10\b\x12\x13\n" +
-	"\x0fCOORDINATE_TERM\x10\t\x12\v\n" +
-	"\aDERIVED\x10\n" +
+	"\x0fCOORDINATE_TERM\x10\t\x12\x0e\n" +
+	"\n" +
+	"DERIVED_TO\x10\n" +
 	"\x12\v\n" +
-	"\aRELATED\x10\vB\x03Z\x01.b\x06proto3"
+	"\aRELATED\x10\v\x12\x10\n" +
+	"\fDERIVED_FROM\x10\f\"\x04\b\x01\x10\x01\"\x04\b\x02\x10\x02*\vHAS_READING*\tHAS_SENSEB\x03Z\x01.b\x06proto3"
 
 var (
 	file_graph_proto_rawDescOnce sync.Once
@@ -317,18 +466,19 @@ func file_graph_proto_rawDescGZIP() []byte {
 	return file_graph_proto_rawDescData
 }
 
-var file_graph_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_graph_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
 var file_graph_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
 var file_graph_proto_goTypes = []any{
-	(EdgeType)(0), // 0: graph.EdgeType
-	(*Graph)(nil), // 1: graph.Graph
-	(*Node)(nil),  // 2: graph.Node
-	(*Edge)(nil),  // 3: graph.Edge
+	(Attributes)(0), // 0: graph.Attributes
+	(EdgeType)(0),   // 1: graph.EdgeType
+	(*Graph)(nil),   // 2: graph.Graph
+	(*Node)(nil),    // 3: graph.Node
+	(*Edge)(nil),    // 4: graph.Edge
 }
 var file_graph_proto_depIdxs = []int32{
-	2, // 0: graph.Graph.nodes:type_name -> graph.Node
-	3, // 1: graph.Graph.edges:type_name -> graph.Edge
-	0, // 2: graph.Edge.type:type_name -> graph.EdgeType
+	3, // 0: graph.Graph.nodes:type_name -> graph.Node
+	4, // 1: graph.Graph.edges:type_name -> graph.Edge
+	1, // 2: graph.Edge.type:type_name -> graph.EdgeType
 	3, // [3:3] is the sub-list for method output_type
 	3, // [3:3] is the sub-list for method input_type
 	3, // [3:3] is the sub-list for extension type_name
@@ -346,7 +496,7 @@ func file_graph_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_graph_proto_rawDesc), len(file_graph_proto_rawDesc)),
-			NumEnums:      1,
+			NumEnums:      2,
 			NumMessages:   3,
 			NumExtensions: 0,
 			NumServices:   0,

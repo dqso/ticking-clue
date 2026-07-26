@@ -73,7 +73,7 @@ func computeNodePositions(r *round, l gameLayout) []nodePos {
 	// Spacing uses the cloud half-width, which is the wider axis of the oval.
 	scales := make([]float64, n)
 	for i, rn := range r.revealed {
-		scales[i] = l.linkSize(rn.node.Word).hx
+		scales[i] = l.linkSize(r.revealedWord(rn)).hx
 	}
 	centralScale := l.centralSize(r).hx
 	step := math.Max(24*l.zoom, l.radius*0.2)
@@ -112,7 +112,7 @@ func computeNodePositions(r *round, l gameLayout) []nodePos {
 func cloudAt(r *round, l gameLayout, pos []nodePos, mx, my float64) int {
 	best := -1
 	for i, rn := range r.revealed {
-		sz := l.linkSize(rn.node.Word)
+		sz := l.linkSize(r.revealedWord(rn))
 		// Point-in-ellipse test with the cloud half axes.
 		dx, dy := (mx-pos[i].x)/sz.hx, (my-pos[i].y)/sz.hy
 		if dx*dx+dy*dy <= 1 {

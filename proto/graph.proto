@@ -15,13 +15,45 @@ message Graph {
 message Node {
   int64 id = 1;
   string word = 2;
+  // attributes is a bitmask of Attributes flags for this lemma.
+  uint64 attributes = 3;
+}
+
+// Attributes are single-bit flags OR-ed into Node.attributes: the parts of
+// speech a Lemma can be (POS_*, from its neo4j "pos" values) and its CEFR
+// level (LEVEL_*, from its "level" value; missing means C2).
+enum Attributes {
+  ATTRIBUTES_UNSPECIFIED = 0;
+  POS_ADJECTIVE = 1;
+  POS_ADVERB = 2;
+  POS_CONJUNCTION = 4;
+  POS_CONTRACTION = 8;
+  POS_DETERMINER = 16;
+  POS_INTERJECTION = 32;
+  POS_NAME = 64;
+  POS_NOUN = 128;
+  POS_NUMBER = 256;
+  POS_PARTICLE = 512;
+  POS_PHRASE = 1024;
+  POS_PREPOSITION = 2048;
+  POS_PREPOSITIONAL_PHRASE = 4096;
+  POS_PRONOUN = 8192;
+  POS_PROVERB = 16384;
+  POS_VERB = 32768;
+  LEVEL_A1 = 65536;
+  LEVEL_A2 = 131072;
+  LEVEL_B1 = 262144;
+  LEVEL_B2 = 524288;
+  LEVEL_C1 = 1048576;
+  LEVEL_C2 = 2097152;
 }
 
 // EdgeType mirrors the "type" property of LINK relationships in neo4j.
 enum EdgeType {
+  // 1, 2 were HAS_READING, HAS_SENSE; kept reserved so they are not reused.
+  reserved 1, 2;
+  reserved "HAS_READING", "HAS_SENSE";
   EDGE_TYPE_UNSPECIFIED = 0;
-  HAS_READING = 1;
-  HAS_SENSE = 2;
   SYNONYM = 3;
   ANTONYM = 4;
   HYPERNYM = 5;
@@ -29,8 +61,9 @@ enum EdgeType {
   HOLONYM = 7;
   MERONYM = 8;
   COORDINATE_TERM = 9;
-  DERIVED = 10;
+  DERIVED_TO = 10;
   RELATED = 11;
+  DERIVED_FROM = 12;
 }
 
 // Edge is a directed link between two nodes.
